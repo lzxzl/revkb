@@ -2,7 +2,8 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildContext, checkpoint, formatIssue, ValidationError } from "./core/knowledge-base.js";
+import { buildContext, checkpoint } from "./core/knowledge-base.js";
+import { formatIssue, ValidationError } from "./core/validation.js";
 
 export interface CliIo {
   out(text: string): void;

@@ -220,14 +220,17 @@ describe("revkb", () => {
     const root = await createVault();
     const contextIo = captureIo();
 
-    expect(await runCli(["context", "demo-target"], root, contextIo.io)).toBe(0);
+    expect(await runCli(["context", "demo-target"], root, contextIo.io), contextIo.stderr()).toBe(0);
     expect(contextIo.stdout()).toContain(
       "## Recommended Next Actions\n- Authentication bypass — analyzing — " +
         "Trace the unauthenticated caller into the native dispatcher. — [[investigations/auth-bypass]]",
     );
 
     const checkpointIo = captureIo();
-    expect(await runCli(["checkpoint", "demo-target"], root, checkpointIo.io)).toBe(0);
+    expect(
+      await runCli(["checkpoint", "demo-target"], root, checkpointIo.io),
+      checkpointIo.stderr(),
+    ).toBe(0);
     expect(checkpointIo.stdout()).toContain(
       "Next actions:\n- Authentication bypass — analyzing — " +
         "Trace the unauthenticated caller into the native dispatcher. — [[investigations/auth-bypass]]",
@@ -323,6 +326,16 @@ Inspect the queued branch later.
   it.each([
     { label: "missing", created: "", code: "missing-snapshot-created" },
     { label: "malformed", created: "created: someday\n", code: "invalid-snapshot-created" },
+    {
+      label: "impossible calendar date",
+      created: "created: 2026-02-30T00:00:00Z\n",
+      code: "invalid-snapshot-created",
+    },
+    {
+      label: "impossible timezone offset",
+      created: "created: 2026-09-01T00:00:00+99:99\n",
+      code: "invalid-snapshot-created",
+    },
   ])("rejects a Snapshot with $label creation time", async ({ created, code }) => {
     const root = await createVault();
     const snapshotPath = path.join(root, "targets/demo-target/snapshots/demo-v1.md");
@@ -332,6 +345,23 @@ Inspect the queued branch later.
 
     expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
     expect(io.stderr()).toContain(code);
+  });
+
+  it("does not accept an Artifact table shown only inside a fenced example", async () => {
+    const root = await createVault();
+    const snapshotPath = path.join(root, "targets/demo-target/snapshots/demo-v1.md");
+    const snapshot = await fs.readFile(snapshotPath, "utf8");
+    await fs.writeFile(
+      snapshotPath,
+      snapshot.replace(
+        `| Type | Path | SHA-256 |\n|---|---|---|\n| so | artifacts/libdemo.so | ${HASH} |`,
+        `\`\`\`text\n| Type | Path | SHA-256 |\n|---|---|---|\n| so | artifacts/libdemo.so | ${HASH} |\n\`\`\``,
+      ),
+    );
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
+    expect(io.stderr()).toContain("missing-artifact-table");
   });
 
   it.each([
@@ -361,11 +391,33 @@ Inspect the queued branch later.
     expect(io.stderr()).toContain(code);
   });
 
+  it("does not accept a required Finding section shown only inside a fenced example", async () => {
+    const root = await createVault();
+    const findingPath = path.join(root, "targets/demo-target/findings/command-injection.md");
+    const finding = await fs.readFile(findingPath, "utf8");
+    await fs.writeFile(
+      findingPath,
+      finding.replace(
+        "## Impact\nAn unauthenticated caller can execute a native command.\n",
+        "```text\n## Impact\nAn unauthenticated caller can execute a native command.\n```\n",
+      ),
+    );
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
+    expect(io.stderr()).toContain("missing-finding-impact");
+  });
+
   it.each([
     {
       contract: "panorama kind",
       mutate: (source: string) => source.replace("kind: panorama", "kind: evidence"),
       code: "invalid-panorama-kind",
+    },
+    {
+      contract: "title",
+      mutate: (source: string) => source.replace("# Demo Target\n\n", ""),
+      code: "missing-panorama-title",
     },
     {
       contract: "mandatory section",
@@ -387,6 +439,39 @@ Inspect the queued branch later.
 
     expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
     expect(io.stderr()).toContain(code);
+  });
+
+  it("does not accept a mandatory Panorama heading shown only inside a fenced example", async () => {
+    const root = await createVault();
+    const panoramaPath = path.join(root, "targets/demo-target/PANORAMA.md");
+    const panorama = await fs.readFile(panoramaPath, "utf8");
+    await fs.writeFile(
+      panoramaPath,
+      panorama.replace(
+        "## Key attack surfaces\n- External parser\n- Privileged native dispatch\n\n",
+        "```text\n## Key attack surfaces\n- External parser\n- Privileged native dispatch\n```\n\n",
+      ),
+    );
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
+    expect(io.stderr()).toContain("missing-panorama-section");
+  });
+
+  it("does not accept a Mermaid example nested inside another code fence", async () => {
+    const root = await createVault();
+    const panoramaPath = path.join(root, "targets/demo-target/PANORAMA.md");
+    const panorama = await fs.readFile(panoramaPath, "utf8");
+    await fs.writeFile(
+      panoramaPath,
+      panorama
+        .replace("```mermaid", "````text\n```mermaid")
+        .replace("```\n\n## Key attack surfaces", "```\n````\n\n## Key attack surfaces"),
+    );
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
+    expect(io.stderr()).toContain("missing-architecture-diagram");
   });
 
   it("warns when an architecture area lacks Knowledge coverage", async () => {
