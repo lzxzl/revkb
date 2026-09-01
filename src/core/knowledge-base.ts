@@ -1,7 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { loadTarget, section, type Note, type TargetVault } from "./markdown.js";
-import { architectureAreas, frontmatterString, generatedRegions, metadataForStatus } from "./model.js";
+import {
+  architectureAreas,
+  frontmatterString,
+  generatedRegions,
+  isOpenInvestigationStatus,
+  metadataForStatus,
+} from "./model.js";
 import { requireValid, type Issue } from "./validation.js";
 
 export interface CheckpointResult {
@@ -17,11 +23,6 @@ function firstLine(content: string): string {
 
 function bullets(lines: string[]): string {
   return lines.length ? lines.map((line) => `- ${line}`).join("\n") : "None.";
-}
-
-function isOpenInvestigationStatus(status: string): boolean {
-  const category = metadataForStatus(status)?.investigationCategory;
-  return category === "active" || category === "lead";
 }
 
 function isActiveInvestigation(note: Note): boolean {

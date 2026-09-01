@@ -366,6 +366,31 @@ Inspect the queued branch later.
 
   it.each([
     {
+      location: "an HTML comment",
+      wrap: (table: string) => `<!--\n${table}\n-->`,
+    },
+    {
+      location: "four-space indented code",
+      wrap: (table: string) =>
+        table
+          .split("\n")
+          .map((line) => `    ${line}`)
+          .join("\n"),
+    },
+  ])("does not accept an Artifact table shown only inside $location", async ({ wrap }) => {
+    const root = await createVault();
+    const snapshotPath = path.join(root, "targets/demo-target/snapshots/demo-v1.md");
+    const snapshot = await fs.readFile(snapshotPath, "utf8");
+    const table = `| Type | Path | SHA-256 |\n|---|---|---|\n| so | artifacts/libdemo.so | ${HASH} |`;
+    await fs.writeFile(snapshotPath, snapshot.replace(table, wrap(table)));
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
+    expect(io.stderr()).toContain("missing-artifact-table");
+  });
+
+  it.each([
+    {
       field: "impact",
       fragment: "## Impact\nAn unauthenticated caller can execute a native command.\n\n",
       code: "missing-finding-impact",
@@ -458,6 +483,26 @@ Inspect the queued branch later.
     expect(io.stderr()).toContain("missing-panorama-section");
   });
 
+  it.each([
+    {
+      location: "an HTML comment",
+      replacement: "<!--\n# Demo Target\n-->\n\n",
+    },
+    {
+      location: "four-space indented code",
+      replacement: "    # Demo Target\n\n",
+    },
+  ])("does not accept a Panorama title shown only inside $location", async ({ replacement }) => {
+    const root = await createVault();
+    const panoramaPath = path.join(root, "targets/demo-target/PANORAMA.md");
+    const panorama = await fs.readFile(panoramaPath, "utf8");
+    await fs.writeFile(panoramaPath, panorama.replace("# Demo Target\n\n", replacement));
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
+    expect(io.stderr()).toContain("missing-panorama-title");
+  });
+
   it("does not accept a Mermaid example nested inside another code fence", async () => {
     const root = await createVault();
     const panoramaPath = path.join(root, "targets/demo-target/PANORAMA.md");
@@ -472,6 +517,52 @@ Inspect the queued branch later.
 
     expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
     expect(io.stderr()).toContain("missing-architecture-diagram");
+  });
+
+  it.each([
+    {
+      location: "a fenced code block",
+      wrap: (markers: string) => `\`\`\`text\n${markers}\n\`\`\``,
+    },
+    {
+      location: "four-space indented code",
+      wrap: (markers: string) =>
+        markers
+          .split("\n")
+          .map((line) => `    ${line}`)
+          .join("\n"),
+    },
+  ])("rejects generated-region markers hidden inside $location", async ({ wrap }) => {
+    const root = await createVault();
+    const panoramaPath = path.join(root, "targets/demo-target/PANORAMA.md");
+    const panorama = await fs.readFile(panoramaPath, "utf8");
+    const markers = "<!-- revkb:coverage:start -->\n<!-- revkb:coverage:end -->";
+    await fs.writeFile(panoramaPath, panorama.replace(markers, wrap(markers)));
+    const before = await fs.readFile(panoramaPath, "utf8");
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
+    expect(io.stderr()).toContain("invalid-generated-region");
+    expect(await fs.readFile(panoramaPath, "utf8")).toBe(before);
+  });
+
+  it("rejects generated-region markers under the wrong Panorama section", async () => {
+    const root = await createVault();
+    const panoramaPath = path.join(root, "targets/demo-target/PANORAMA.md");
+    const panorama = await fs.readFile(panoramaPath, "utf8");
+    const markers = "<!-- revkb:coverage:start -->\n<!-- revkb:coverage:end -->";
+    await fs.writeFile(
+      panoramaPath,
+      panorama
+        .replace(`${markers}\n\n`, "")
+        .replace("## Active investigations\n", `## Active investigations\n${markers}\n`),
+    );
+    const before = await fs.readFile(panoramaPath, "utf8");
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
+    expect(io.stderr()).toContain("invalid-generated-region");
+    expect(await fs.readFile(panoramaPath, "utf8")).toBe(before);
   });
 
   it("warns when an architecture area lacks Knowledge coverage", async () => {

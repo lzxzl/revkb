@@ -25,6 +25,11 @@ export function metadataForStatus(status: string): StatusMetadata | undefined {
   return Object.hasOwn(statusMetadata, status) ? statusMetadata[status as CoverageStatus] : undefined;
 }
 
+export function isOpenInvestigationStatus(status: string): boolean {
+  const category = metadataForStatus(status)?.investigationCategory;
+  return category === "active" || category === "lead";
+}
+
 export function frontmatterString(note: Note, field: string): string {
   const candidate = note.data[field];
   return typeof candidate === "string" ? candidate : "";

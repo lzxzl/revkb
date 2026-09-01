@@ -2,7 +2,7 @@ import {
   firstHeading,
   hasFencedCodeBlock,
   hasSection,
-  markdownOutsideFencedCode,
+  markdownStructuralText,
   section,
   wikilinkKeys,
   type Note,
@@ -12,6 +12,7 @@ import {
   architectureAreas,
   frontmatterString,
   generatedRegions,
+  isOpenInvestigationStatus,
   metadataForStatus,
 } from "./model.js";
 
@@ -26,6 +27,12 @@ const requiredPanoramaSections = [
   "Confirmed findings",
   "Snapshots",
 ] as const;
+const generatedRegionSections: Record<(typeof generatedRegions)[number], string> = {
+  coverage: "Audit coverage",
+  investigations: "Active investigations",
+  leads: "Unreviewed branches",
+  findings: "Confirmed findings",
+};
 
 export interface Issue {
   severity: "error" | "warning";
@@ -71,7 +78,7 @@ function tableCells(line: string): string[] {
 }
 
 function artifactTable(note: Note): Artifact[] | undefined {
-  const lines = markdownOutsideFencedCode(note.body).split("\n");
+  const lines = markdownStructuralText(note.body).split("\n");
   const headerIndex = lines.findIndex((line) => {
     const cells = tableCells(line).map((cell) => cell.toLowerCase());
     return cells.length === 3 && cells[0] === "type" && cells[1] === "path" && cells[2] === "sha-256";
@@ -153,11 +160,6 @@ function isIsoTimestamp(candidate: string | undefined): boolean {
     offsetHour <= 23 &&
     offsetMinute <= 59
   );
-}
-
-function isOpenInvestigationStatus(status: string): boolean {
-  const category = metadataForStatus(status)?.investigationCategory;
-  return category === "active" || category === "lead";
 }
 
 export function validateTarget(target: TargetVault): ValidationReport {
@@ -346,6 +348,21 @@ export function validateTarget(target: TargetVault): ValidationReport {
       errors.push(issue("error", "invalid-generated-region", target.panorama, `${name} markers must appear exactly once`));
     } else if (target.panorama.raw.indexOf(start) > target.panorama.raw.indexOf(end)) {
       errors.push(issue("error", "invalid-generated-region", target.panorama, `${name} markers are reversed`));
+    } else {
+      const heading = generatedRegionSections[name];
+      const structuralSection = markdownStructuralText(section(target.panorama.body, heading));
+      if (countOccurrences(structuralSection, start) !== 1 || countOccurrences(structuralSection, end) !== 1) {
+        errors.push(
+          issue(
+            "error",
+            "invalid-generated-region",
+            target.panorama,
+            `${name} markers must appear outside code inside ## ${heading}`,
+          ),
+        );
+      } else if (structuralSection.indexOf(start) > structuralSection.indexOf(end)) {
+        errors.push(issue("error", "invalid-generated-region", target.panorama, `${name} markers are reversed`));
+      }
     }
   }
 

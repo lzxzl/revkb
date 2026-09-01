@@ -28,59 +28,97 @@ function normalizeKey(value: string): string {
 
 interface MarkdownLine {
   text: string;
-  inFencedCode: boolean;
+  structuralText: string;
   fenceInfo: string | undefined;
 }
 
 function scanMarkdown(content: string): MarkdownLine[] {
   let fence: { character: "`" | "~"; length: number } | undefined;
+  let inHtmlComment = false;
+
+  const withoutHtmlComments = (text: string): string => {
+    let remainder = text;
+    let visible = "";
+    while (remainder) {
+      if (inHtmlComment) {
+        const end = remainder.indexOf("-->");
+        if (end < 0) return visible;
+        inHtmlComment = false;
+        remainder = remainder.slice(end + 3);
+        continue;
+      }
+
+      const start = remainder.indexOf("<!--");
+      if (start < 0) return visible + remainder;
+      visible += remainder.slice(0, start);
+      inHtmlComment = true;
+      remainder = remainder.slice(start + 4);
+    }
+    return visible;
+  };
+
   return content.split("\n").map((text) => {
     if (fence) {
       const close = /^(?: {0,3})(`{3,}|~{3,})\s*$/.exec(text);
       const closesFence =
         close?.[1]?.[0] === fence.character && (close[1]?.length ?? 0) >= fence.length;
       if (closesFence) fence = undefined;
-      return { text, inFencedCode: true, fenceInfo: undefined };
+      return { text, structuralText: "", fenceInfo: undefined };
     }
 
-    const open = /^(?: {0,3})(`{3,}|~{3,})(.*)$/.exec(text);
+    if (
+      !inHtmlComment &&
+      /^ {0,3}<!--\s*revkb:[a-z-]+:(?:start|end)\s*-->\s*$/.test(text)
+    ) {
+      return { text, structuralText: text, fenceInfo: undefined };
+    }
+
+    const structuralText = withoutHtmlComments(text);
+    if (/^(?: {4}|\t)/.test(structuralText)) {
+      return { text, structuralText: "", fenceInfo: undefined };
+    }
+
+    const open = /^(?: {0,3})(`{3,}|~{3,})(.*)$/.exec(structuralText);
     const delimiter = open?.[1];
-    if (!delimiter) return { text, inFencedCode: false, fenceInfo: undefined };
+    if (!delimiter) return { text, structuralText, fenceInfo: undefined };
 
     fence = { character: delimiter[0] as "`" | "~", length: delimiter.length };
-    return { text, inFencedCode: true, fenceInfo: (open[2] ?? "").trim() };
+    return { text, structuralText: "", fenceInfo: (open[2] ?? "").trim() };
   });
 }
 
-export function markdownOutsideFencedCode(content: string): string {
+export function markdownStructuralText(content: string): string {
   return scanMarkdown(content)
-    .map((line) => (line.inFencedCode ? "" : line.text))
+    .map((line) => line.structuralText)
     .join("\n");
 }
 
 export function wikilinkKeys(content: string): string[] {
   return [
-    ...markdownOutsideFencedCode(content).matchAll(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g),
+    ...markdownStructuralText(content).matchAll(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g),
   ].map((match) => normalizeKey(match[1] ?? ""));
 }
 
+function headingText(line: MarkdownLine, level: number): string {
+  const match = new RegExp(`^${"#".repeat(level)}\\s+(.+?)\\s*$`).exec(line.structuralText);
+  return match?.[1]?.trim() ?? "";
+}
+
+function sectionStart(lines: MarkdownLine[], heading: string): number {
+  const wanted = heading.trim().toLowerCase();
+  return lines.findIndex((line) => headingText(line, 2).toLowerCase() === wanted);
+}
+
 export function firstHeading(body: string, level: number): string {
-  const prefix = "#".repeat(level);
   for (const line of scanMarkdown(body)) {
-    if (line.inFencedCode) continue;
-    const match = new RegExp(`^${prefix}\\s+(.+?)\\s*$`).exec(line.text);
-    if (match?.[1]) return match[1].trim();
+    const heading = headingText(line, level);
+    if (heading) return heading;
   }
   return "";
 }
 
 export function hasSection(body: string, heading: string): boolean {
-  const wanted = heading.trim().toLowerCase();
-  return scanMarkdown(body).some((line) => {
-    if (line.inFencedCode) return false;
-    const match = /^##\s+(.+?)\s*$/.exec(line.text);
-    return match?.[1]?.trim().toLowerCase() === wanted;
-  });
+  return sectionStart(scanMarkdown(body), heading) >= 0;
 }
 
 export function hasFencedCodeBlock(body: string, language: string): boolean {
@@ -92,19 +130,14 @@ export function hasFencedCodeBlock(body: string, language: string): boolean {
 
 export function section(body: string, heading: string): string {
   const lines = scanMarkdown(body);
-  const wanted = heading.trim().toLowerCase();
-  const start = lines.findIndex((line) => {
-    if (line.inFencedCode) return false;
-    const match = /^##\s+(.+?)\s*$/.exec(line.text);
-    return match?.[1]?.trim().toLowerCase() === wanted;
-  });
+  const start = sectionStart(lines, heading);
   if (start < 0) return "";
 
   const content: string[] = [];
   for (let index = start + 1; index < lines.length; index += 1) {
     const line = lines[index];
     if (!line) continue;
-    if (!line.inFencedCode && /^#{1,2}\s+/.test(line.text)) break;
+    if (/^#{1,2}\s+/.test(line.structuralText)) break;
     content.push(line.text);
   }
   return content.join("\n").trim();
