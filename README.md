@@ -30,7 +30,7 @@ mkdir -p targets
 cp -R templates/target targets/my-target
 ```
 
-Replace `example-target`, `example-v1`, the example Artifact hash, and the illustrative content before the first Checkpoint. Delete the example Finding unless it represents a confirmed vulnerability in the real Target.
+Replace `example-target`, `example-v1`, the Snapshot creation time, the example Artifact hash, and the illustrative content before the first Checkpoint. Delete the example Finding unless it represents a confirmed vulnerability in the real Target. A Target ID is one directory name under `targets/`; path-like IDs are rejected.
 
 Each Target uses:
 
@@ -46,13 +46,22 @@ targets/<target-id>/
 
 `PANORAMA.md` is the human entry point. Its Mermaid diagram shows the overall business/data flow and trust boundaries; linked pages provide progressively deeper detail.
 
+### Required page contracts
+
+- `PANORAMA.md` keeps the required overview sections, a Mermaid diagram under `Overall architecture`, and one `%% revkb-area: [[knowledge/...]]` marker for each coverage area.
+- A Snapshot declares an ISO-8601 `created` value, an optional parent Snapshot, a `Type | Path | SHA-256` Artifact table, and `Known changes`.
+- A confirmed Finding includes `Impact`, `Preconditions`, `Related`, and `Evidence`; `Related` links to Knowledge or an Investigation.
+- Every open Investigation or Lead records a concrete `Next action`.
+
+Snapshot Artifact rows require exactly three nonempty fields. SHA-256 values are 64 hexadecimal characters.
+
 ## Agent context
 
 ```bash
 revkb context my-target
 ```
 
-The command prints the active Snapshot, current architecture, coverage areas, active Investigations, unreviewed Leads, confirmed Findings, warnings, and concrete next actions. It intentionally omits verbose evidence bodies.
+The command prints the active Snapshot, current architecture, human-maintained high-risk attack surfaces, audit coverage, active Investigations, unreviewed Leads, confirmed Findings, recommended next actions, and warnings. It intentionally omits verbose evidence bodies.
 
 ## Checkpoint
 
@@ -67,7 +76,7 @@ Checkpoint validates the Target and refreshes only these marked regions in `PANO
 - unreviewed Leads
 - confirmed Findings
 
-Everything outside the markers, including the overall Mermaid architecture and human prose, is preserved. A hard validation error causes zero file writes.
+Everything outside the markers, including the overall Mermaid architecture and human prose, is preserved. A hard validation error causes zero file writes. Warnings do not block the refresh. After validation, Checkpoint reports the change result, warnings, and concrete next actions.
 
 Run Checkpoint after meaningful discoveries and before ending or handing off an analysis session—not after every reverse-engineering tool call.
 

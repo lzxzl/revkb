@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildContext, checkpoint, formatIssue, ValidationError } from "./core/knowledge-base.js";
@@ -11,11 +12,14 @@ export interface CliIo {
 const usage = "Usage: revkb context <target-id> | revkb checkpoint <target-id>\n";
 
 export async function runCli(args: string[], cwd: string, io: CliIo): Promise<number> {
-  if (args.length !== 2 || !["context", "checkpoint"].includes(args[0] ?? "")) {
+  const targetId = args[1] ?? "";
+  const validTargetId =
+    targetId !== "" && targetId !== "." && targetId !== ".." && path.basename(targetId) === targetId;
+  if (args.length !== 2 || !["context", "checkpoint"].includes(args[0] ?? "") || !validTargetId) {
     io.err(usage);
     return 2;
   }
-  const [command = "", targetId = ""] = args;
+  const [command = ""] = args;
   try {
     if (command === "context") {
       io.out(await buildContext(cwd, targetId));
@@ -29,6 +33,10 @@ export async function runCli(args: string[], cwd: string, io: CliIo): Promise<nu
         : "No generated Panorama changes.\n",
     );
     for (const warning of result.warnings) io.out(`${formatIssue(warning)}\n`);
+    const actions = result.nextActions.length
+      ? result.nextActions.map((action) => `- ${action}`).join("\n")
+      : "None.";
+    io.out(`Next actions:\n${actions}\n`);
     return 0;
   } catch (error) {
     if (error instanceof ValidationError) {
@@ -40,8 +48,16 @@ export async function runCli(args: string[], cwd: string, io: CliIo): Promise<nu
   }
 }
 
-const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
-if (invokedPath === fileURLToPath(import.meta.url)) {
+function canonicalPath(filePath: string): string {
+  try {
+    return realpathSync(filePath);
+  } catch {
+    return path.resolve(filePath);
+  }
+}
+
+const invokedPath = process.argv[1] ? canonicalPath(process.argv[1]) : "";
+if (invokedPath === canonicalPath(fileURLToPath(import.meta.url))) {
   process.exitCode = await runCli(process.argv.slice(2), process.cwd(), {
     out: (text) => process.stdout.write(text),
     err: (text) => process.stderr.write(text),

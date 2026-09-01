@@ -2,6 +2,7 @@
 kind: snapshot
 target: example-target
 snapshot: example-v1
+created: 2026-09-01T00:00:00Z
 ---
 # Example Snapshot v1
 

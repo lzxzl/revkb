@@ -14,6 +14,11 @@ An attacker can reach a privileged operation without the intended authorization 
 
 The alternate external entry is reachable.
 
+## Related
+
+- [[knowledge/example-area]]
+- [[investigations/example-investigation]]
+
 ## Evidence
 
 [[evidence/example-evidence]]

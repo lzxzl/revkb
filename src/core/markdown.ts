@@ -25,6 +25,12 @@ function normalizeKey(value: string): string {
   return path.posix.normalize(value.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\.md$/, ""));
 }
 
+export function wikilinkKeys(content: string): string[] {
+  return [...content.matchAll(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g)].map((match) =>
+    normalizeKey(match[1] ?? ""),
+  );
+}
+
 export function section(body: string, heading: string): string {
   const lines = body.split("\n");
   const wanted = heading.trim().toLowerCase();
@@ -44,11 +50,16 @@ export function section(body: string, heading: string): string {
 }
 
 export function parseNote(absolutePath: string, relativePath: string, raw: string): Note {
-  const parsed = matter(raw);
+  const parsed = (() => {
+    try {
+      return matter(raw);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${relativePath}: ${message}`, { cause: error });
+    }
+  })();
   const title = /^#\s+(.+?)\s*$/m.exec(parsed.content)?.[1]?.trim() ?? path.basename(relativePath, ".md");
-  const wikilinks = [...parsed.content.matchAll(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g)].map(
-    (match) => normalizeKey(match[1] ?? ""),
-  );
+  const wikilinks = wikilinkKeys(parsed.content);
   return {
     absolutePath,
     relativePath: relativePath.replaceAll("\\", "/"),
