@@ -1,0 +1,6 @@
+*.apk
+node_modules/
+dist/
+coverage/
+.worktrees/
+*.revkb-tmp
