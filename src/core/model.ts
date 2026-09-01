@@ -1,4 +1,4 @@
-import { section, type Note } from "./markdown.js";
+import { fencedCodeBlockBodies, section, type Note } from "./markdown.js";
 
 export const generatedRegions = ["coverage", "investigations", "leads", "findings"] as const;
 
@@ -39,8 +39,10 @@ export function architectureAreas(panorama: Note): string[] {
   const architecture = section(panorama.body, "Overall architecture");
   return [
     ...new Set(
-      [...architecture.matchAll(/^\s*%%\s+revkb-area:\s+\[\[([^\]]+)\]\]\s*$/gm)].map(
-        (match) => (match[1] ?? "").replace(/\.md$/, ""),
+      fencedCodeBlockBodies(architecture, "mermaid").flatMap((diagram) =>
+        [...diagram.matchAll(/^\s*%%\s+revkb-area:\s+\[\[([^\]]+)\]\]\s*$/gm)].map(
+          (match) => (match[1] ?? "").replace(/\.md$/, ""),
+        ),
       ),
     ),
   ].sort();

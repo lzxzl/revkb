@@ -4,6 +4,7 @@ import {
   hasSection,
   markdownStructuralText,
   section,
+  visibleSection,
   wikilinkKeys,
   type Note,
   type TargetVault,
@@ -192,10 +193,10 @@ export function validateTarget(target: TargetVault): ValidationReport {
     if (kind === "finding" && status !== "confirmed") {
       errors.push(issue("error", "unconfirmed-finding", note, "Findings require status: confirmed"));
     }
-    if (kind === "finding" && !section(note.body, "Impact")) {
+    if (kind === "finding" && !visibleSection(note.body, "Impact")) {
       errors.push(issue("error", "missing-finding-impact", note, "Confirmed Finding requires Impact"));
     }
-    if (kind === "finding" && !section(note.body, "Preconditions")) {
+    if (kind === "finding" && !visibleSection(note.body, "Preconditions")) {
       errors.push(issue("error", "missing-finding-preconditions", note, "Confirmed Finding requires Preconditions"));
     }
     if (
@@ -214,7 +215,7 @@ export function validateTarget(target: TargetVault): ValidationReport {
         ),
       );
     }
-    if (kind === "finding" && !section(note.body, "Evidence")) {
+    if (kind === "finding" && !visibleSection(note.body, "Evidence")) {
       errors.push(issue("error", "finding-without-evidence", note, "Confirmed Finding requires Evidence"));
     }
     if (kind === "snapshot") {
@@ -231,7 +232,7 @@ export function validateTarget(target: TargetVault): ValidationReport {
           ),
         );
       }
-      if (!section(note.body, "Known changes")) {
+      if (!visibleSection(note.body, "Known changes")) {
         warnings.push(
           issue(
             "warning",
@@ -274,10 +275,14 @@ export function validateTarget(target: TargetVault): ValidationReport {
     for (const link of note.wikilinks) {
       if (!notesByKey.has(link)) errors.push(issue("error", "broken-wikilink", note, `[[${link}]] does not exist`));
     }
-    if (kind === "knowledge" && status === "reviewed" && !section(note.body, "Evidence")) {
+    if (kind === "knowledge" && status === "reviewed" && !visibleSection(note.body, "Evidence")) {
       warnings.push(issue("warning", "reviewed-without-evidence", note, "Reviewed Knowledge should include Evidence"));
     }
-    if (kind === "investigation" && isOpenInvestigationStatus(status) && !section(note.body, "Next action")) {
+    if (
+      kind === "investigation" &&
+      isOpenInvestigationStatus(status) &&
+      !visibleSection(note.body, "Next action")
+    ) {
       warnings.push(
         issue("warning", "missing-next-action", note, "Open Investigation or Lead should name its next action"),
       );

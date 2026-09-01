@@ -28,13 +28,48 @@ function normalizeKey(value: string): string {
 
 interface MarkdownLine {
   text: string;
+  visibleText: string;
   structuralText: string;
   fenceInfo: string | undefined;
+  fenceId: number | undefined;
+  fenceBoundary: "open" | "content" | "close" | undefined;
+}
+
+interface HtmlBlock {
+  end: RegExp | undefined;
+  untilBlank: boolean;
+}
+
+const blockHtmlTags = [
+  "address", "article", "aside", "base", "basefont", "blockquote", "body", "caption", "center",
+  "col", "colgroup", "dd", "details", "dialog", "dir", "div", "dl", "dt", "fieldset",
+  "figcaption", "figure", "footer", "form", "frame", "frameset", "h[1-6]", "head", "header",
+  "hr", "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem", "nav",
+  "noframes", "ol", "optgroup", "option", "p", "param", "search", "section", "summary", "table",
+  "tbody", "td", "tfoot", "th", "thead", "title", "tr", "track", "ul",
+].join("|");
+const blockHtmlTag = new RegExp(
+  `^(?: {0,3})<\\/?(?:${blockHtmlTags})(?:\\s|\\/?>|$)`,
+  "i",
+);
+
+function htmlBlockStart(text: string): HtmlBlock | undefined {
+  const literal = /^(?: {0,3})<(script|pre|style|textarea)(?:\s|>|$)/i.exec(text);
+  if (literal?.[1]) {
+    return { end: new RegExp(`</${literal[1]}\\s*>`, "i"), untilBlank: false };
+  }
+  return blockHtmlTag.test(text) ? { end: undefined, untilBlank: true } : undefined;
+}
+
+function htmlVisibleText(text: string): string {
+  return text.replace(/<!--.*?-->/g, "").replace(/<[^>]*>/g, " ");
 }
 
 function scanMarkdown(content: string): MarkdownLine[] {
-  let fence: { character: "`" | "~"; length: number } | undefined;
+  let fence: { character: "`" | "~"; length: number; id: number } | undefined;
+  let nextFenceId = 1;
   let inHtmlComment = false;
+  let htmlBlock: HtmlBlock | undefined;
 
   const withoutHtmlComments = (text: string): string => {
     let remainder = text;
@@ -59,31 +94,110 @@ function scanMarkdown(content: string): MarkdownLine[] {
 
   return content.split("\n").map((text) => {
     if (fence) {
+      const activeFence = fence;
       const close = /^(?: {0,3})(`{3,}|~{3,})\s*$/.exec(text);
       const closesFence =
-        close?.[1]?.[0] === fence.character && (close[1]?.length ?? 0) >= fence.length;
+        close?.[1]?.[0] === activeFence.character && (close[1]?.length ?? 0) >= activeFence.length;
       if (closesFence) fence = undefined;
-      return { text, structuralText: "", fenceInfo: undefined };
+      return {
+        text,
+        visibleText: closesFence ? "" : text,
+        structuralText: "",
+        fenceInfo: undefined,
+        fenceId: activeFence.id,
+        fenceBoundary: closesFence ? "close" : "content",
+      };
+    }
+
+    if (htmlBlock) {
+      const closesBlock = htmlBlock.end
+        ? htmlBlock.end.test(text)
+        : htmlBlock.untilBlank && !text.trim();
+      if (closesBlock) htmlBlock = undefined;
+      return {
+        text,
+        visibleText: htmlVisibleText(text),
+        structuralText: "",
+        fenceInfo: undefined,
+        fenceId: undefined,
+        fenceBoundary: undefined,
+      };
+    }
+
+    if (!inHtmlComment && /^(?: {4}|\t)/.test(text)) {
+      return {
+        text,
+        visibleText: text,
+        structuralText: "",
+        fenceInfo: undefined,
+        fenceId: undefined,
+        fenceBoundary: undefined,
+      };
     }
 
     if (
       !inHtmlComment &&
       /^ {0,3}<!--\s*revkb:[a-z-]+:(?:start|end)\s*-->\s*$/.test(text)
     ) {
-      return { text, structuralText: text, fenceInfo: undefined };
+      return {
+        text,
+        visibleText: "",
+        structuralText: text,
+        fenceInfo: undefined,
+        fenceId: undefined,
+        fenceBoundary: undefined,
+      };
     }
 
     const structuralText = withoutHtmlComments(text);
+    const startedHtmlBlock = !inHtmlComment ? htmlBlockStart(structuralText) : undefined;
+    if (startedHtmlBlock) {
+      if (!startedHtmlBlock.end?.test(structuralText)) htmlBlock = startedHtmlBlock;
+      return {
+        text,
+        visibleText: htmlVisibleText(structuralText),
+        structuralText: "",
+        fenceInfo: undefined,
+        fenceId: undefined,
+        fenceBoundary: undefined,
+      };
+    }
+
     if (/^(?: {4}|\t)/.test(structuralText)) {
-      return { text, structuralText: "", fenceInfo: undefined };
+      return {
+        text,
+        visibleText: structuralText,
+        structuralText: "",
+        fenceInfo: undefined,
+        fenceId: undefined,
+        fenceBoundary: undefined,
+      };
     }
 
     const open = /^(?: {0,3})(`{3,}|~{3,})(.*)$/.exec(structuralText);
     const delimiter = open?.[1];
-    if (!delimiter) return { text, structuralText, fenceInfo: undefined };
+    if (!delimiter) {
+      return {
+        text,
+        visibleText: structuralText,
+        structuralText,
+        fenceInfo: undefined,
+        fenceId: undefined,
+        fenceBoundary: undefined,
+      };
+    }
 
-    fence = { character: delimiter[0] as "`" | "~", length: delimiter.length };
-    return { text, structuralText: "", fenceInfo: (open[2] ?? "").trim() };
+    const fenceId = nextFenceId;
+    nextFenceId += 1;
+    fence = { character: delimiter[0] as "`" | "~", length: delimiter.length, id: fenceId };
+    return {
+      text,
+      visibleText: "",
+      structuralText: "",
+      fenceInfo: (open[2] ?? "").trim(),
+      fenceId,
+      fenceBoundary: "open",
+    };
   });
 }
 
@@ -91,6 +205,31 @@ export function markdownStructuralText(content: string): string {
   return scanMarkdown(content)
     .map((line) => line.structuralText)
     .join("\n");
+}
+
+export function markdownVisibleText(content: string): string {
+  return scanMarkdown(content)
+    .map((line) => line.visibleText)
+    .join("\n");
+}
+
+export function fencedCodeBlockBodies(content: string, language: string): string[] {
+  const lines = scanMarkdown(content);
+  const wanted = language.trim().toLowerCase();
+  const fenceIds = lines
+    .filter(
+      (line) =>
+        line.fenceBoundary === "open" &&
+        line.fenceInfo?.split(/\s+/, 1)[0]?.toLowerCase() === wanted,
+    )
+    .map((line) => line.fenceId)
+    .filter((id): id is number => id !== undefined);
+  return fenceIds.map((id) =>
+    lines
+      .filter((line) => line.fenceId === id && line.fenceBoundary === "content")
+      .map((line) => line.text)
+      .join("\n"),
+  );
 }
 
 export function wikilinkKeys(content: string): string[] {
@@ -141,6 +280,10 @@ export function section(body: string, heading: string): string {
     content.push(line.text);
   }
   return content.join("\n").trim();
+}
+
+export function visibleSection(body: string, heading: string): string {
+  return markdownVisibleText(section(body, heading)).trim();
 }
 
 function frontmatterSource(raw: string): string {

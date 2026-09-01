@@ -323,6 +323,25 @@ Inspect the queued branch later.
     expect(io.stdout()).toContain("WARNING missing-next-action investigations/auth-bypass.md:");
   });
 
+  it("ignores an HTML comment placeholder when checking and reporting the next action", async () => {
+    const root = await createVault();
+    const investigationPath = path.join(root, "targets/demo-target/investigations/auth-bypass.md");
+    const investigation = await fs.readFile(investigationPath, "utf8");
+    await fs.writeFile(
+      investigationPath,
+      investigation.replace(
+        "Trace the unauthenticated caller into the native dispatcher.",
+        "<!-- TODO -->",
+      ),
+    );
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(0);
+    expect(io.stdout()).toContain("WARNING missing-next-action investigations/auth-bypass.md:");
+    expect(io.stdout()).toContain("Next actions:\nNone.");
+    expect(io.stdout()).not.toContain("<!-- TODO -->");
+  });
+
   it.each([
     { label: "missing", created: "", code: "missing-snapshot-created" },
     { label: "malformed", created: "created: someday\n", code: "invalid-snapshot-created" },
@@ -376,6 +395,10 @@ Inspect the queued branch later.
           .split("\n")
           .map((line) => `    ${line}`)
           .join("\n"),
+    },
+    {
+      location: "a raw HTML block",
+      wrap: (table: string) => `<pre>\n${table}\n</pre>`,
     },
   ])("does not accept an Artifact table shown only inside $location", async ({ wrap }) => {
     const root = await createVault();
@@ -431,6 +454,20 @@ Inspect the queued branch later.
 
     expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
     expect(io.stderr()).toContain("missing-finding-impact");
+  });
+
+  it("does not accept an HTML comment placeholder as Finding evidence", async () => {
+    const root = await createVault();
+    const findingPath = path.join(root, "targets/demo-target/findings/command-injection.md");
+    const finding = await fs.readFile(findingPath, "utf8");
+    await fs.writeFile(
+      findingPath,
+      finding.replace("## Evidence\n[[evidence/runtime-trace]]", "## Evidence\n<!-- TODO -->"),
+    );
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
+    expect(io.stderr()).toContain("finding-without-evidence");
   });
 
   it.each([
@@ -492,6 +529,10 @@ Inspect the queued branch later.
       location: "four-space indented code",
       replacement: "    # Demo Target\n\n",
     },
+    {
+      location: "a raw HTML block",
+      replacement: "<pre>\n# Demo Target\n</pre>\n\n",
+    },
   ])("does not accept a Panorama title shown only inside $location", async ({ replacement }) => {
     const root = await createVault();
     const panoramaPath = path.join(root, "targets/demo-target/PANORAMA.md");
@@ -521,6 +562,33 @@ Inspect the queued branch later.
 
   it.each([
     {
+      location: "a text code block",
+      wrap: (marker: string) => `\`\`\`text\n${marker}\n\`\`\``,
+    },
+    {
+      location: "an HTML comment",
+      wrap: (marker: string) => `<!--\n${marker}\n-->`,
+    },
+  ])("ignores a coverage marker moved from Mermaid into $location", async ({ wrap }) => {
+    const root = await createVault();
+    const panoramaPath = path.join(root, "targets/demo-target/PANORAMA.md");
+    const panorama = await fs.readFile(panoramaPath, "utf8");
+    const marker = "%% revkb-area: [[knowledge/external-entry]]";
+    await fs.writeFile(
+      panoramaPath,
+      panorama
+        .replace(`  ${marker}\n`, "")
+        .replace("```\n\n## Key attack surfaces", `\`\`\`\n\n${wrap(marker)}\n\n## Key attack surfaces`),
+    );
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(0);
+    const updated = await fs.readFile(panoramaPath, "utf8");
+    expect(updated).not.toContain("| External entry | reviewed |");
+  });
+
+  it.each([
+    {
       location: "a fenced code block",
       wrap: (markers: string) => `\`\`\`text\n${markers}\n\`\`\``,
     },
@@ -531,6 +599,10 @@ Inspect the queued branch later.
           .split("\n")
           .map((line) => `    ${line}`)
           .join("\n"),
+    },
+    {
+      location: "a raw HTML block",
+      wrap: (markers: string) => `<pre>\n${markers}\n</pre>`,
     },
   ])("rejects generated-region markers hidden inside $location", async ({ wrap }) => {
     const root = await createVault();

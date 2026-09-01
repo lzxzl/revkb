@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { loadTarget, section, type Note, type TargetVault } from "./markdown.js";
+import { loadTarget, visibleSection, type Note, type TargetVault } from "./markdown.js";
 import {
   architectureAreas,
   frontmatterString,
@@ -53,7 +53,7 @@ function renderNextActionLines(investigations: Note[]): string[] {
     )
     .filter((note) => isOpenInvestigationStatus(frontmatterString(note, "status")))
     .map((note) => {
-      const action = section(note.body, "Next action");
+      const action = visibleSection(note.body, "Next action");
       return action
         ? `${note.title} — ${frontmatterString(note, "status")} — ${firstLine(action)} — [[${note.key}]]`
         : "";
@@ -82,7 +82,7 @@ function generatePanoramaRegions(target: TargetVault): Record<(typeof generatedR
   ].join("\n");
   const investigationLines = investigations
     .filter(isActiveInvestigation)
-    .map((note) => `[[${note.key}|${note.title}]] — ${frontmatterString(note, "status")} — Next: ${firstLine(section(note.body, "Next action"))}`);
+    .map((note) => `[[${note.key}|${note.title}]] — ${frontmatterString(note, "status")} — Next: ${firstLine(visibleSection(note.body, "Next action"))}`);
   const leadLines = investigations
     .filter(isLead)
     .map((note) => `[[${note.key}|${note.title}]] — ${frontmatterString(note, "status")}`);
@@ -130,7 +130,7 @@ export async function buildContext(vaultRoot: string, targetId: string): Promise
     .filter(isConfirmedFinding)
     .map((note) => `${note.title} — [[${note.key}]]`);
   const warningLines = report.warnings.map((item) => `${item.code} ${item.path}: ${item.message}`);
-  const attackSurfaces = section(target.panorama.body, "Key attack surfaces") || "None.";
+  const attackSurfaces = visibleSection(target.panorama.body, "Key attack surfaces") || "None.";
   const actions = renderNextActionLines(investigations);
 
   return `# Reverse Audit Context: ${target.panorama.title}
@@ -138,7 +138,7 @@ export async function buildContext(vaultRoot: string, targetId: string): Promise
 Active Snapshot: ${frontmatterString(target.panorama, "snapshot")}
 
 ## Current Architecture
-${section(target.panorama.body, "Current understanding") || "Not recorded."}
+${visibleSection(target.panorama.body, "Current understanding") || "Not recorded."}
 
 ## High-risk Areas
 ${attackSurfaces}
