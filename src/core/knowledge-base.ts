@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { loadTarget, visibleSection, type Note, type TargetVault } from "./markdown.js";
+import { loadTargetAt, visibleSection, type Note, type TargetVault } from "./markdown.js";
 import {
   architectureAreas,
   frontmatterString,
@@ -9,6 +9,7 @@ import {
   metadataForStatus,
 } from "./model.js";
 import { requireValid, type Issue } from "./validation.js";
+import { centralTargetLocation, type TargetLocation } from "./target-location.js";
 
 export interface CheckpointResult {
   panoramaPath: string;
@@ -113,8 +114,8 @@ function renderPanorama(target: TargetVault): string {
   return generatedRegions.reduce((source, name) => replaceRegion(source, name, bodies[name]), target.panorama.raw);
 }
 
-export async function buildContext(vaultRoot: string, targetId: string): Promise<string> {
-  const target = await loadTarget(vaultRoot, targetId);
+export async function buildContextAt(location: TargetLocation): Promise<string> {
+  const target = await loadTargetAt(location);
   const report = requireValid(target);
   const areas = architectureAreas(target.panorama)
     .map((key) => target.notes.find((note) => note.key === key))
@@ -163,8 +164,12 @@ ${bullets(warningLines)}
 `;
 }
 
-export async function checkpoint(vaultRoot: string, targetId: string): Promise<CheckpointResult> {
-  const target = await loadTarget(vaultRoot, targetId);
+export async function buildContext(vaultRoot: string, targetId: string): Promise<string> {
+  return buildContextAt(centralTargetLocation(vaultRoot, targetId));
+}
+
+export async function checkpointAt(location: TargetLocation): Promise<CheckpointResult> {
+  const target = await loadTargetAt(location);
   const report = requireValid(target);
   const actions = renderNextActionLines(
     target.notes.filter((note) => frontmatterString(note, "kind") === "investigation"),
@@ -201,4 +206,8 @@ export async function checkpoint(vaultRoot: string, targetId: string): Promise<C
     warnings: report.warnings,
     nextActions: actions,
   };
+}
+
+export async function checkpoint(vaultRoot: string, targetId: string): Promise<CheckpointResult> {
+  return checkpointAt(centralTargetLocation(vaultRoot, targetId));
 }

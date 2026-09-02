@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
+import { centralTargetLocation, type TargetLocation } from "./target-location.js";
 
 export interface Note {
   absolutePath: string;
@@ -325,17 +326,20 @@ async function markdownFiles(directory: string): Promise<string[]> {
   return files.sort();
 }
 
-export async function loadTarget(vaultRoot: string, targetId: string): Promise<TargetVault> {
-  const targetRoot = path.join(vaultRoot, "targets", targetId);
-  const files = await markdownFiles(targetRoot);
+export async function loadTargetAt(location: TargetLocation): Promise<TargetVault> {
+  const files = await markdownFiles(location.targetRoot);
   const notes = await Promise.all(
     files.map(async (absolutePath) => {
-      const relativePath = path.relative(targetRoot, absolutePath);
+      const relativePath = path.relative(location.targetRoot, absolutePath);
       return parseNote(absolutePath, relativePath, await fs.readFile(absolutePath, "utf8"));
     }),
   );
   notes.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   const panorama = notes.find((note) => note.relativePath === "PANORAMA.md");
-  if (!panorama) throw new Error(`Missing targets/${targetId}/PANORAMA.md`);
-  return { vaultRoot, targetRoot, targetId, panorama, notes };
+  if (!panorama) throw new Error(`Missing ${path.join(location.targetRoot, "PANORAMA.md")}`);
+  return { ...location, panorama, notes };
+}
+
+export async function loadTarget(vaultRoot: string, targetId: string): Promise<TargetVault> {
+  return loadTargetAt(centralTargetLocation(vaultRoot, targetId));
 }
