@@ -1,6 +1,6 @@
 # revkb Initialization and Local Target Mode Design
 
-**Status:** Chat design approved; written review pending
+**Status:** Approved
 
 **Date:** 2026-09-02
 
@@ -112,6 +112,8 @@ Explicit IDs supplied to the existing `context` and `checkpoint` commands retain
 ### Help and errors
 
 `--help`, `-h`, and `help` print current command syntax and exit successfully. Invalid options or incomplete commands print a focused explanation plus usage and exit with status 2. Operational or validation failures exit with status 1.
+
+`--artifact` is the only repeatable option. Repeating `--target` or `--snapshot` is a syntax error rather than silently selecting one value.
 
 ## Artifact Handling
 
