@@ -186,7 +186,7 @@ describe("revkb", () => {
       const io = captureIo();
 
       expect(await runCli(["checkpoint", targetId], "/tmp/revkb-target-id-test", io.io)).toBe(2);
-      expect(io.stderr()).toBe("Usage: revkb context <target-id> | revkb checkpoint <target-id>\n");
+      expect(io.stderr()).toContain("revkb checkpoint [<target-id>]");
     },
   );
 
