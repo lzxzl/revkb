@@ -21,21 +21,67 @@ npm run build
 npm link
 ```
 
-`npm link` is optional; without it, run `node dist/cli.js` in place of `revkb`.
+`npm link` makes the `revkb` command available globally. It is optional: from this
+repository you can use `node dist/cli.js`, or invoke that file by absolute path from
+another directory. `rg` is useful during reverse engineering, but `revkb` itself does
+not require it.
 
-## Create a Target
+## Quick start: keep knowledge beside a reverse-engineering workspace
 
 ```bash
-mkdir -p targets
-cp -R templates/target targets/my-target
+cd /path/to/yuanbao
+revkb init --artifact ./yuanbao-release-prod-signed-5040.apk
+revkb context
+revkb checkpoint
 ```
 
-Replace `example-target`, `example-v1`, the Snapshot creation time, the example Artifact hash, and the illustrative content before the first Checkpoint. Delete the example Finding unless it represents a confirmed vulnerability in the real Target. A Target ID is one directory name under `targets/`; path-like IDs are rejected.
+`init` creates a complete knowledge base in `.revkb/`. By default, the Target ID is
+the workspace directory name (`yuanbao` above), and the Snapshot ID is
+`<target-id>-initial`. It calculates each Artifact's SHA-256 without moving, copying,
+or modifying the Artifact. The generated Knowledge, Evidence, and Finding directories
+are empty; no architecture or vulnerability is invented.
 
-Each Target uses:
+Supply explicit IDs or multiple Artifacts when needed:
+
+```bash
+revkb init \
+  --target yuanbao \
+  --snapshot yuanbao-5040 \
+  --artifact ./yuanbao-release-prod-signed-5040.apk \
+  --artifact ./lib/arm64-v8a/libexample.so
+```
+
+From the workspace root or any descendant directory, `revkb context` and
+`revkb checkpoint` search upward for the nearest `.revkb/PANORAMA.md`. You do not
+need to repeat the Target ID. Initialization refuses to overwrite an existing
+`.revkb/` and refuses to create a nested Target while already inside one.
+
+Run `revkb --help` (or `revkb <command> --help`) for the complete syntax.
+
+## Centralized multi-Target Vault
+
+The original `targets/<target-id>/` layout remains supported. A positional Target ID
+selects this mode:
+
+```bash
+cd /path/to/reverse-audit-vault
+revkb init yuanbao \
+  --snapshot yuanbao-5040 \
+  --artifact ./yuanbao-release-prod-signed-5040.apk
+revkb context yuanbao
+revkb checkpoint yuanbao
+```
+
+This creates `targets/yuanbao/`. Existing `context <target-id>` and
+`checkpoint <target-id>` commands keep the same behavior, and initialization refuses
+to overwrite an existing Target.
+
+## Target layout
+
+Local and centralized Targets use the same Markdown structure:
 
 ```text
-targets/<target-id>/
+<target-root>/
 ├── PANORAMA.md
 ├── snapshots/
 ├── knowledge/
@@ -58,7 +104,8 @@ Snapshot Artifact rows require exactly three nonempty fields. SHA-256 values are
 ## Agent context
 
 ```bash
-revkb context my-target
+revkb context              # nearest local .revkb Target
+revkb context my-target    # centralized targets/my-target
 ```
 
 The command prints the active Snapshot, current architecture, human-maintained high-risk attack surfaces, audit coverage, active Investigations, unreviewed Leads, confirmed Findings, recommended next actions, and warnings. It intentionally omits verbose evidence bodies.
@@ -66,7 +113,8 @@ The command prints the active Snapshot, current architecture, human-maintained h
 ## Checkpoint
 
 ```bash
-revkb checkpoint my-target
+revkb checkpoint              # nearest local .revkb Target
+revkb checkpoint my-target    # centralized targets/my-target
 ```
 
 Checkpoint validates the Target and refreshes only these marked regions in `PANORAMA.md`:
@@ -79,6 +127,14 @@ Checkpoint validates the Target and refreshes only these marked regions in `PANO
 Everything outside the markers, including the overall Mermaid architecture and human prose, is preserved. A hard validation error causes zero file writes. Warnings do not block the refresh. After validation, Checkpoint reports the change result, warnings, and concrete next actions.
 
 Run Checkpoint after meaningful discoveries and before ending or handing off an analysis session—not after every reverse-engineering tool call.
+
+## Manual template fallback
+
+`templates/target/` remains a worked example for readers who deliberately want to
+assemble a Target by hand. Copy it to `.revkb/` or `targets/<target-id>/`, then replace
+every example Target ID, Snapshot ID, timestamp, hash, and illustrative claim before
+using it. In particular, delete the example Finding unless it is independently
+confirmed for the real Target. For normal setup, prefer `revkb init`.
 
 ## Obsidian and MCP tools
 

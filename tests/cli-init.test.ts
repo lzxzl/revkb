@@ -1,8 +1,12 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { runCli } from "../src/cli.js";
+
+const execFileAsync = promisify(execFile);
 
 function captureIo(): {
   stdout: () => string;
@@ -165,5 +169,39 @@ describe("revkb CLI initialization", () => {
       `Already inside local Target at ${path.join(workspace, ".revkb")}`,
     );
     await expect(fs.stat(path.join(nested, ".revkb"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("initializes and operates local mode through the compiled binary", async () => {
+    await execFileAsync("npm", ["run", "build"], { cwd: path.resolve(".") });
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "revkb-bin-local-"));
+    const targetId = path.basename(workspace);
+    await fs.writeFile(path.join(workspace, "sample.apk"), "abc");
+    const cli = path.resolve("dist/cli.js");
+    const run = (args: string[]) =>
+      execFileAsync(process.execPath, [cli, ...args], { cwd: workspace });
+
+    const initialized = await run(["init", "--artifact", "sample.apk"]);
+    expect(initialized.stderr).toBe("");
+    expect(initialized.stdout).toContain(`for ${targetId} at Snapshot ${targetId}-initial`);
+
+    const snapshot = await fs.readFile(
+      path.join(workspace, `.revkb/snapshots/${targetId}-initial.md`),
+      "utf8",
+    );
+    expect(snapshot).toContain(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+
+    const context = await run(["context"]);
+    expect(context.stderr).toBe("");
+    expect(context.stdout).toContain(`# Reverse Audit Context: ${targetId}`);
+
+    const firstCheckpoint = await run(["checkpoint"]);
+    expect(firstCheckpoint.stderr).toBe("");
+    expect(firstCheckpoint.stdout).toContain("Updated .revkb/PANORAMA.md");
+
+    const secondCheckpoint = await run(["checkpoint"]);
+    expect(secondCheckpoint.stderr).toBe("");
+    expect(secondCheckpoint.stdout).toContain("No generated Panorama changes.");
   });
 });

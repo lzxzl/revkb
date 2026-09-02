@@ -1,13 +1,20 @@
 # Reverse Audit Agent Workflow
 
-1. Start with `revkb context <target-id>` and choose one active Investigation.
+Create knowledge beside a reverse-engineering workspace with
+`revkb init --artifact <path>`, or create a centralized Vault Target with
+`revkb init <target-id> --artifact <path>`.
+
+1. Start with `revkb context` for the nearest local Target, or
+   `revkb context <target-id>` for a centralized Target, and choose one active
+   Investigation.
 2. Treat Artifact bytes and reproducible runtime behavior as authoritative.
 3. Keep hypotheses inside Investigations; do not present them as Knowledge or Findings.
 4. Use available static-analysis, dynamic-analysis, and MCP tools without copying verbose raw output into the Vault.
 5. Checkpoint after a stable architecture change, a new Lead, an Investigation transition, a Finding decision, a Snapshot change, or before ending the session.
 6. Before Checkpoint, correct or delete disproved Knowledge, retain only minimal reproducible Negative Audit Results, and write one concrete next action.
 7. Keep `PANORAMA.md` human-readable and update its overall Mermaid architecture when the current model changes.
-8. Run `revkb checkpoint <target-id>` and resolve hard errors before handing off.
+8. Run `revkb checkpoint` locally, or `revkb checkpoint <target-id>` centrally, and
+   resolve hard errors before handing off.
 
 ## Exploration discipline
 
