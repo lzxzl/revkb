@@ -59,8 +59,16 @@ function parseCli(args: string[]): CliCommand {
 
   const [name, ...rest] = args;
   if (name === "context" || name === "checkpoint") {
-    if (rest.length > 1) throw new CliUsageError(`${name} accepts at most one Target ID`);
-    const targetId = rest[0];
+    const positional = rest[0] === "--" ? rest.slice(1) : rest;
+    if (rest[0] === "--" && positional.length === 0) {
+      throw new CliUsageError("-- requires a Target ID");
+    }
+    if (rest[0] !== "--") {
+      const option = rest.find((argument) => argument.startsWith("-"));
+      if (option) throw new CliUsageError(`Unknown option: ${option}`);
+    }
+    if (positional.length > 1) throw new CliUsageError(`${name} accepts at most one Target ID`);
+    const targetId = positional[0];
     if (targetId !== undefined && !isValidTargetId(targetId)) {
       throw new CliUsageError(`Invalid Target ID: ${targetId || "(empty)"}`);
     }

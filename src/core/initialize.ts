@@ -39,8 +39,38 @@ async function sha256(filePath: string): Promise<string> {
   return hash.digest("hex");
 }
 
-function portablePath(filePath: string): string {
-  return filePath.split(path.sep).join("/");
+type PathOperations = Pick<typeof path, "relative" | "isAbsolute" | "sep">;
+
+export function portableRelativeArtifactPath(
+  invocationRoot: string,
+  absolutePath: string,
+  pathOperations: PathOperations = path,
+): string {
+  const relativePath = pathOperations.relative(invocationRoot, absolutePath);
+  if (!relativePath || pathOperations.isAbsolute(relativePath)) {
+    throw new Error(
+      `Artifact cannot be recorded relative to the invocation directory: ${absolutePath}`,
+    );
+  }
+  return relativePath.split(pathOperations.sep).join("/");
+}
+
+function yamlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function escapeMarkdownTableCell(value: string): string {
+  const entities: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "[": "&#91;",
+    "]": "&#93;",
+    "(": "&#40;",
+    ")": "&#41;",
+    "`": "&#96;",
+  };
+  return value.replace(/[&<>\[\]()`]/g, (character) => entities[character] ?? character);
 }
 
 async function inspectArtifacts(
@@ -58,8 +88,8 @@ async function inspectArtifacts(
     if (canonicalPaths.has(absolutePath)) throw new Error(`Duplicate Artifact: ${inputPath}`);
     canonicalPaths.add(absolutePath);
 
-    const recordedPath = portablePath(path.relative(resolvedRoot, absolutePath));
-    if (!recordedPath || /[\r\n|]/.test(recordedPath)) {
+    const recordedPath = portableRelativeArtifactPath(resolvedRoot, absolutePath);
+    if (/[\r\n|]/.test(recordedPath)) {
       throw new Error(`Artifact path cannot contain a line break or |: ${inputPath}`);
     }
     const extension = path.extname(absolutePath).slice(1).toLowerCase();
@@ -75,8 +105,8 @@ async function inspectArtifacts(
 function renderPanorama(targetId: string, snapshotId: string): string {
   return `---
 kind: panorama
-target: ${targetId}
-snapshot: ${snapshotId}
+target: ${yamlString(targetId)}
+snapshot: ${yamlString(snapshotId)}
 ---
 # ${targetId}
 
@@ -113,7 +143,7 @@ Not established.
 
 ## Snapshots
 
-- [[snapshots/${snapshotId}]] — active
+- [[snapshots/${snapshotId}.md]] — active
 `;
 }
 
@@ -124,12 +154,15 @@ function renderSnapshot(
   artifacts: InitializedArtifact[],
 ): string {
   const rows = artifacts
-    .map((artifact) => `| ${artifact.type} | ${artifact.path} | ${artifact.sha256} |`)
+    .map(
+      (artifact) =>
+        `| ${artifact.type} | ${escapeMarkdownTableCell(artifact.path)} | ${artifact.sha256} |`,
+    )
     .join("\n");
   return `---
 kind: snapshot
-target: ${targetId}
-snapshot: ${snapshotId}
+target: ${yamlString(targetId)}
+snapshot: ${yamlString(snapshotId)}
 created: ${created}
 ---
 # ${snapshotId}
@@ -147,8 +180,8 @@ Initial Snapshot.
 function renderInitialInvestigation(targetId: string, snapshotId: string): string {
   return `---
 kind: investigation
-target: ${targetId}
-snapshot: ${snapshotId}
+target: ${yamlString(targetId)}
+snapshot: ${yamlString(snapshotId)}
 status: queued
 ---
 # Initial target analysis

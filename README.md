@@ -74,7 +74,9 @@ revkb checkpoint yuanbao
 
 This creates `targets/yuanbao/`. Existing `context <target-id>` and
 `checkpoint <target-id>` commands keep the same behavior, and initialization refuses
-to overwrite an existing Target.
+to overwrite an existing Target. For a pre-existing legacy ID that starts with `-`,
+use the option delimiter, for example `revkb context -- -legacy` (and likewise for
+`checkpoint`).
 
 ## Target layout
 

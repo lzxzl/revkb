@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { initializeTarget } from "../src/core/initialize.js";
+import {
+  initializeTarget,
+  portableRelativeArtifactPath,
+} from "../src/core/initialize.js";
 import { buildContextAt, checkpointAt } from "../src/core/knowledge-base.js";
 import { localTargetLocation } from "../src/core/target-location.js";
 
@@ -14,6 +17,15 @@ async function expectAbsent(candidate: string): Promise<void> {
 }
 
 describe("initializeTarget", () => {
+  it("rejects an Artifact on a different Windows volume", () => {
+    expect(() =>
+      portableRelativeArtifactPath("C:\\work", "D:\\artifacts\\app.apk", path.win32),
+    ).toThrow("Artifact cannot be recorded relative to the invocation directory");
+    expect(
+      portableRelativeArtifactPath("C:\\work", "C:\\artifacts\\app.apk", path.win32),
+    ).toBe("../artifacts/app.apk");
+  });
+
   it("hashes an Artifact and creates a valid neutral Target", async () => {
     const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "revkb-init-ok-"));
     await fs.writeFile(path.join(workspace, "yuanbao.apk"), "abc");
@@ -72,6 +84,37 @@ describe("initializeTarget", () => {
     ).rejects.toThrow(/Invalid (Target|Snapshot) ID/);
 
     await expectAbsent(path.join(workspace, ".revkb"));
+  });
+
+  it("accepts valid IDs that YAML would otherwise coerce to non-string values", async () => {
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "revkb-init-yaml-id-"));
+    await fs.writeFile(path.join(workspace, "app.apk"), "abc");
+    const location = localTargetLocation(workspace, "123");
+
+    await initializeTarget({
+      invocationRoot: workspace,
+      location,
+      snapshotId: "true",
+      artifactPaths: ["app.apk"],
+    });
+
+    expect(await buildContextAt(location)).toContain("# Reverse Audit Context: 123");
+  });
+
+  it("supports a Snapshot ID that already ends in .md", async () => {
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "revkb-init-dot-id-"));
+    await fs.writeFile(path.join(workspace, "app.apk"), "abc");
+    const location = localTargetLocation(workspace, "demo");
+
+    await initializeTarget({
+      invocationRoot: workspace,
+      location,
+      snapshotId: "release.md",
+      artifactPaths: ["app.apk"],
+    });
+
+    expect(await fs.stat(path.join(workspace, ".revkb/snapshots/release.md.md"))).toBeDefined();
+    expect(await buildContextAt(location)).toContain("Active Snapshot: release.md");
   });
 
   it("records multiple Artifacts with inferred and fallback types", async () => {
@@ -161,6 +204,39 @@ describe("initializeTarget", () => {
       }),
     ).rejects.toThrow("Artifact path cannot contain a line break or |: bad|name.apk");
     await expectAbsent(path.join(workspace, ".revkb"));
+  });
+
+  it("escapes HTML syntax in Artifact paths without changing returned metadata", async () => {
+    if (process.platform === "win32") return;
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "revkb-init-html-path-"));
+    const commentPath = "foo<!--.apk";
+    const htmlPath = "<img src=x onerror=boom>.apk";
+    const linkPath = "[click](javascript:boom).apk";
+    await fs.writeFile(path.join(workspace, commentPath), "abc");
+    await fs.writeFile(path.join(workspace, htmlPath), "native");
+    await fs.writeFile(path.join(workspace, linkPath), "link");
+
+    const result = await initializeTarget({
+      invocationRoot: workspace,
+      location: localTargetLocation(workspace, "demo"),
+      snapshotId: "demo-initial",
+      artifactPaths: [commentPath, htmlPath, linkPath],
+    });
+
+    expect(result.artifacts.map((artifact) => artifact.path)).toEqual([
+      commentPath,
+      htmlPath,
+      linkPath,
+    ]);
+    const snapshot = await fs.readFile(
+      path.join(workspace, ".revkb/snapshots/demo-initial.md"),
+      "utf8",
+    );
+    expect(snapshot).toContain("foo&lt;!--.apk");
+    expect(snapshot).toContain("&lt;img src=x onerror=boom&gt;.apk");
+    expect(snapshot).not.toContain("<img src=x onerror=boom>");
+    expect(snapshot).toContain("&#91;click&#93;&#40;javascript:boom&#41;.apk");
+    expect(snapshot).not.toContain("[click](javascript:boom)");
   });
 
   it("refuses to overwrite an existing Target", async () => {

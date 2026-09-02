@@ -68,6 +68,8 @@ describe("revkb CLI initialization", () => {
       args: ["init", "--snapshot", "one", "--snapshot", "two", "--artifact", "app.apk"],
       message: "--snapshot may be specified only once",
     },
+    { args: ["context", "--bogus"], message: "Unknown option: --bogus" },
+    { args: ["checkpoint", "--bogus"], message: "Unknown option: --bogus" },
     { args: ["context", "one", "two"], message: "context accepts at most one Target ID" },
     { args: ["checkpoint", "../outside"], message: "Invalid Target ID: ../outside" },
   ])("reports a syntax error for $args", async ({ args, message }) => {
@@ -130,7 +132,7 @@ describe("revkb CLI initialization", () => {
     expect(io.stdout()).toContain(`for ${targetId} at Snapshot ${targetId}-initial`);
     expect(
       await fs.readFile(path.join(workspace, `.revkb/snapshots/${targetId}-initial.md`), "utf8"),
-    ).toContain(`snapshot: ${targetId}-initial`);
+    ).toContain(`snapshot: "${targetId}-initial"`);
   });
 
   it("initializes and operates a centralized Target with a positional ID", async () => {
@@ -147,6 +149,28 @@ describe("revkb CLI initialization", () => {
     const contextIo = captureIo();
     expect(await runCli(["context", "demo"], root, contextIo.io)).toBe(0);
     expect(contextIo.stdout()).toContain("# Reverse Audit Context: demo");
+  });
+
+  it("uses -- to address a legacy centralized Target whose ID starts with a hyphen", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "revkb-cli-legacy-id-"));
+    const targetRoot = path.join(root, "targets/--legacy");
+    await fs.mkdir(path.dirname(targetRoot), { recursive: true });
+    await fs.cp(path.resolve("templates/target"), targetRoot, { recursive: true });
+    const entries = await fs.readdir(targetRoot, { recursive: true });
+    await Promise.all(
+      entries
+        .filter((entry) => entry.endsWith(".md"))
+        .map(async (entry) => {
+          const notePath = path.join(targetRoot, entry);
+          const source = await fs.readFile(notePath, "utf8");
+          await fs.writeFile(notePath, source.replaceAll("example-target", "--legacy"), "utf8");
+        }),
+    );
+    const io = captureIo();
+
+    expect(await runCli(["context", "--", "--legacy"], root, io.io)).toBe(0);
+    expect(io.stderr()).toBe("");
+    expect(io.stdout()).toContain("# Reverse Audit Context: Example Target");
   });
 
   it("refuses local initialization inside an existing local Target", async () => {
