@@ -26,6 +26,35 @@ repository you can use `node dist/cli.js`, or invoke that file by absolute path 
 another directory. `rg` is useful during reverse engineering, but `revkb` itself does
 not require it.
 
+## Codex Skill
+
+The repository includes a reusable [`revkb-audit`](skills/revkb-audit/SKILL.md)
+Skill. Link the repository copy into Codex's global Skill directory so that the
+checked-in version remains the single source of truth. From the repository root, run:
+
+```bash
+revkb_skill_source="$(pwd)/skills/revkb-audit"
+revkb_skill_root="${CODEX_HOME:-$HOME/.codex}/skills"
+mkdir -p "$revkb_skill_root"
+ln -s "$revkb_skill_source" "$revkb_skill_root/revkb-audit"
+```
+
+The link follows updates to this checkout; recreate it if the checkout moves.
+
+In a Codex reverse-engineering session, invoke it explicitly when desired:
+
+```text
+$revkb-audit Continue the authorized APK audit in this workspace.
+```
+
+Implicit invocation is enabled for authorized APK, firmware, native-binary, and
+application reverse-engineering work. The Skill recovers an existing local Target
+with `revkb context` before analysis and checkpoints a Target that it opened or
+initialized before handoff. It does not initialize `.revkb/` unless asked to
+establish durable tracking. Archify is an optional companion only when the user
+explicitly asks for a standalone architecture, workflow, sequence, or data-flow
+visualization.
+
 ## Quick start: keep knowledge beside a reverse-engineering workspace
 
 ```bash

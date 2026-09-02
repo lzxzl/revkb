@@ -1,0 +1,6 @@
+interface:
+  display_name: "revkb Audit"
+  short_description: "Maintain durable state during reverse audits"
+  default_prompt: "Use $revkb-audit to resume this authorized reverse audit from its durable state and checkpoint the result."
+policy:
+  allow_implicit_invocation: true
