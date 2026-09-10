@@ -13,6 +13,7 @@ export interface Note {
   body: string;
   raw: string;
   wikilinks: string[];
+  markdownLinks: string[];
 }
 
 export interface TargetVault {
@@ -239,6 +240,299 @@ export function wikilinkKeys(content: string): string[] {
   ].map((match) => normalizeKey(match[1] ?? ""));
 }
 
+function encodeMarkdownPath(relativePath: string): string {
+  return relativePath
+    .split("/")
+    .map((segment) =>
+      encodeURIComponent(segment).replace(
+        /[!'()*]/g,
+        (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+      ),
+    )
+    .join("/");
+}
+
+export function markdownLink(label: string, relativePath: string): string {
+  const escapedLabel = label.replaceAll("\\", "\\\\").replace(/[\[\]|]/g, "\\$&");
+  return `[${escapedLabel}](${encodeMarkdownPath(relativePath)})`;
+}
+
+interface InlineMarkdownLink {
+  end: number;
+  destinationStart: number;
+  destinationEnd: number;
+  destination: string;
+}
+
+function isEscaped(source: string, index: number): boolean {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) {
+    backslashes += 1;
+  }
+  return backslashes % 2 === 1;
+}
+
+function backtickRunLength(source: string, index: number): number {
+  let end = index;
+  while (source[end] === "`") end += 1;
+  return end - index;
+}
+
+function codeSpanEnd(source: string, start: number): number | undefined {
+  const openingLength = backtickRunLength(source, start);
+  let cursor = start + openingLength;
+  while (cursor < source.length) {
+    const next = source.indexOf("`", cursor);
+    if (next < 0) return undefined;
+    const closingLength = backtickRunLength(source, next);
+    if (closingLength === openingLength) return next + closingLength;
+    cursor = next + closingLength;
+  }
+  return undefined;
+}
+
+function skipWhitespace(source: string, start: number): number {
+  let cursor = start;
+  while (/\s/.test(source[cursor] ?? "")) cursor += 1;
+  return cursor;
+}
+
+function linkEndAfterDestination(source: string, start: number): number | undefined {
+  let cursor = skipWhitespace(source, start);
+  if (source[cursor] === ")") return cursor + 1;
+
+  const opener = source[cursor];
+  const closer = opener === '"' ? '"' : opener === "'" ? "'" : opener === "(" ? ")" : undefined;
+  if (!closer) return undefined;
+  cursor += 1;
+  while (cursor < source.length) {
+    if (source[cursor] === "\\" && cursor + 1 < source.length) {
+      cursor += 2;
+      continue;
+    }
+    if (source[cursor] === closer) {
+      cursor = skipWhitespace(source, cursor + 1);
+      return source[cursor] === ")" ? cursor + 1 : undefined;
+    }
+    cursor += 1;
+  }
+  return undefined;
+}
+
+function inlineMarkdownLinkAt(source: string, start: number): InlineMarkdownLink | undefined {
+  if (
+    source[start] !== "[" ||
+    isEscaped(source, start) ||
+    (source[start - 1] === "!" && !isEscaped(source, start - 1))
+  ) {
+    return undefined;
+  }
+
+  let cursor = start + 1;
+  let labelDepth = 1;
+  while (cursor < source.length && labelDepth > 0) {
+    if (source[cursor] === "\\" && cursor + 1 < source.length) {
+      cursor += 2;
+      continue;
+    }
+    if (source[cursor] === "[") labelDepth += 1;
+    if (source[cursor] === "]") labelDepth -= 1;
+    cursor += 1;
+  }
+  if (labelDepth !== 0 || source[cursor] !== "(") return undefined;
+
+  cursor = skipWhitespace(source, cursor + 1);
+  let destinationStart: number;
+  let destinationEnd: number | undefined;
+  let end: number | undefined;
+  if (source[cursor] === "<") {
+    destinationStart = cursor + 1;
+    cursor = destinationStart;
+    while (cursor < source.length && source[cursor] !== "\n") {
+      if (source[cursor] === "\\" && cursor + 1 < source.length) {
+        cursor += 2;
+        continue;
+      }
+      if (source[cursor] === ">") break;
+      cursor += 1;
+    }
+    if (source[cursor] !== ">") return undefined;
+    destinationEnd = cursor;
+    end = linkEndAfterDestination(source, cursor + 1);
+  } else {
+    destinationStart = cursor;
+    let parenthesisDepth = 0;
+    while (cursor < source.length) {
+      if (source[cursor] === "\\" && cursor + 1 < source.length) {
+        cursor += 2;
+        continue;
+      }
+      if (source[cursor] === "(") {
+        parenthesisDepth += 1;
+        cursor += 1;
+        continue;
+      }
+      if (source[cursor] === ")") {
+        if (parenthesisDepth === 0) {
+          destinationEnd = cursor;
+          end = cursor + 1;
+          break;
+        }
+        parenthesisDepth -= 1;
+        cursor += 1;
+        continue;
+      }
+      if (/\s/.test(source[cursor] ?? "")) {
+        destinationEnd = cursor;
+        end = linkEndAfterDestination(source, cursor);
+        break;
+      }
+      cursor += 1;
+    }
+  }
+
+  if (destinationEnd === undefined || end === undefined) return undefined;
+  return {
+    end,
+    destinationStart,
+    destinationEnd,
+    destination: source.slice(destinationStart, destinationEnd),
+  };
+}
+
+function inlineMarkdownLinks(source: string): InlineMarkdownLink[] {
+  const links: InlineMarkdownLink[] = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    if (source[cursor] === "`" && !isEscaped(source, cursor)) {
+      const end = codeSpanEnd(source, cursor);
+      if (end !== undefined) {
+        cursor = end;
+        continue;
+      }
+      cursor += backtickRunLength(source, cursor);
+      continue;
+    }
+    const link = inlineMarkdownLinkAt(source, cursor);
+    if (link) {
+      links.push(link);
+      cursor = link.end;
+      continue;
+    }
+    cursor += 1;
+  }
+  return links;
+}
+
+interface ResolvedMarkdownDestination {
+  path: string;
+  suffix: string;
+}
+
+function resolveMarkdownDestination(
+  destination: string,
+  sourceRelativePath: string,
+): ResolvedMarkdownDestination | undefined {
+  const trimmed = destination.trim();
+  let suffixIndex = -1;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    if (trimmed[index] === "\\") {
+      index += 1;
+      continue;
+    }
+    if (trimmed[index] === "?" || trimmed[index] === "#") {
+      suffixIndex = index;
+      break;
+    }
+  }
+  const encodedPath = suffixIndex < 0 ? trimmed : trimmed.slice(0, suffixIndex);
+  const suffix = suffixIndex < 0 ? "" : trimmed.slice(suffixIndex);
+  const normalizedSourcePath = path.posix.normalize(sourceRelativePath.replaceAll("\\", "/"));
+  if (!encodedPath) {
+    return suffix ? { path: normalizedSourcePath, suffix } : undefined;
+  }
+  if (encodedPath.startsWith("/") || /^[a-z][a-z0-9+.-]*:/i.test(encodedPath)) {
+    return undefined;
+  }
+
+  let decodedPath: string;
+  try {
+    decodedPath = decodeURIComponent(encodedPath);
+  } catch {
+    return undefined;
+  }
+  let unescapedPath = "";
+  for (let index = 0; index < decodedPath.length; index += 1) {
+    const character = decodedPath[index] ?? "";
+    const next = decodedPath[index + 1];
+    const nextCode = next?.charCodeAt(0) ?? 0;
+    const punctuation =
+      (nextCode >= 33 && nextCode <= 47) ||
+      (nextCode >= 58 && nextCode <= 64) ||
+      (nextCode >= 91 && nextCode <= 96) ||
+      (nextCode >= 123 && nextCode <= 126);
+    if (character === "\\" && next && punctuation) {
+      unescapedPath += next;
+      index += 1;
+    } else {
+      unescapedPath += character;
+    }
+  }
+  if (path.posix.isAbsolute(unescapedPath) || /^[a-z][a-z0-9+.-]*:/i.test(unescapedPath)) {
+    return undefined;
+  }
+
+  const sourceDirectory = path.posix.dirname(normalizedSourcePath);
+  return {
+    path: path.posix.normalize(
+      path.posix.join(sourceDirectory === "." ? "" : sourceDirectory, unescapedPath),
+    ),
+    suffix,
+  };
+}
+
+export function markdownLinkKeys(content: string, sourceRelativePath: string): string[] {
+  const keys: string[] = [];
+  for (const link of inlineMarkdownLinks(markdownStructuralText(content))) {
+    const resolved = resolveMarkdownDestination(link.destination, sourceRelativePath);
+    if (
+      !resolved ||
+      !/\.md$/i.test(resolved.path) ||
+      resolved.path === ".." ||
+      resolved.path.startsWith("../")
+    ) {
+      continue;
+    }
+    keys.push(normalizeKey(resolved.path));
+  }
+  return keys;
+}
+
+export function rebaseMarkdownLinks(
+  content: string,
+  sourceRelativePath: string,
+  destinationRelativePath: string,
+): string {
+  const destinationDirectory = path.posix.dirname(destinationRelativePath.replaceAll("\\", "/"));
+  let cursor = 0;
+  let result = "";
+  for (const link of inlineMarkdownLinks(content)) {
+    result += content.slice(cursor, link.destinationStart);
+    const resolved = resolveMarkdownDestination(link.destination, sourceRelativePath);
+    if (!resolved) {
+      result += link.destination;
+    } else {
+      const rebasedPath = path.posix.relative(
+        destinationDirectory === "." ? "" : destinationDirectory,
+        resolved.path,
+      );
+      result += `${encodeMarkdownPath(rebasedPath || path.posix.basename(resolved.path))}${resolved.suffix}`;
+    }
+    cursor = link.destinationEnd;
+  }
+  return result + content.slice(cursor);
+}
+
 function headingText(line: MarkdownLine, level: number): string {
   const match = new RegExp(`^${"#".repeat(level)}\\s+(.+?)\\s*$`).exec(line.structuralText);
   return match?.[1]?.trim() ?? "";
@@ -300,18 +594,21 @@ export function parseNote(absolutePath: string, relativePath: string, raw: strin
       throw new Error(`${relativePath}: ${message}`, { cause: error });
     }
   })();
-  const title = firstHeading(parsed.content, 1) || path.basename(relativePath, ".md");
+  const normalizedRelativePath = relativePath.replaceAll("\\", "/");
+  const title = firstHeading(parsed.content, 1) || path.basename(normalizedRelativePath, ".md");
   const wikilinks = wikilinkKeys(parsed.content);
+  const markdownLinks = markdownLinkKeys(parsed.content, normalizedRelativePath);
   return {
     absolutePath,
-    relativePath: relativePath.replaceAll("\\", "/"),
-    key: normalizeKey(relativePath),
+    relativePath: normalizedRelativePath,
+    key: normalizeKey(normalizedRelativePath),
     title,
     data: parsed.data as Record<string, unknown>,
     frontmatter: frontmatterSource(raw),
     body: parsed.content,
     raw,
     wikilinks,
+    markdownLinks,
   };
 }
 

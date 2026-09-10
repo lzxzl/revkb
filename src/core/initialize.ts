@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { createDirectoryAtomically } from "./atomic-directory.js";
-import { loadTargetAt } from "./markdown.js";
+import { loadTargetAt, markdownLink } from "./markdown.js";
 import type { TargetLocation } from "./target-location.js";
 import { requireValid } from "./validation.js";
 
@@ -143,7 +143,7 @@ Not established.
 
 ## Snapshots
 
-- [[snapshots/${snapshotId}.md]] — active
+- ${markdownLink(snapshotId, `snapshots/${snapshotId}.md`)} — active
 `;
 }
 

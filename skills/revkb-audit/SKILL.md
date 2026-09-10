@@ -5,8 +5,8 @@ description: Use when working on authorized APK, firmware, native-binary, or app
 
 # revkb Audit
 
-Use revkb as durable state. Artifact bytes and reproducible runtime behavior are
-authoritative; the Vault is the current evidence-backed model, not a log.
+Use revkb as durable state. Artifact bytes and reproducible behavior are
+authoritative; the Vault is an evidence-backed model, not a log.
 
 ## Resume before analyzing
 
@@ -25,9 +25,8 @@ authoritative; the Vault is the current evidence-backed model, not a log.
      centralized. If none exists, continue without creating one unless the user
      asked to establish durable tracking. That request is sufficient authority: run
      `revkb init --artifact <path>`, then `revkb context`.
-3. Add `--snapshot` or repeated `--artifact` options only when their values are
-   known. Use `--target <target-id>` only with local initialization, never together
-   with a positional centralized Target ID.
+3. Add `--snapshot` or repeated `--artifact` only for known values.
+   `--target <target-id>` is local-init only and cannot accompany a centralized ID.
 4. Choose one active Investigation and its concrete `Next action` from the context.
 
 ## Maintain the model
@@ -50,6 +49,12 @@ scope; it never means safe.
 Update human-maintained architecture and attack-surface prose when the model changes.
 Never hand-edit text between `revkb` generated-region markers.
 
+Use relative standard Markdown links with explicit `.md` extensions for durable
+cross-note references, for example
+`[Runtime trace](../evidence/runtime-trace.md)`. Accept legacy
+`[[evidence/runtime-trace]]`, but do not create new human-visible Wikilinks. Keep
+`%% revkb-area: [[knowledge/...]]` unchanged because it is a machine marker.
+
 ## Checkpoint before handoff
 
 After a stable discovery, new Lead, Investigation transition, Finding decision,
@@ -58,9 +63,9 @@ Snapshot change, or before ending/handoff, run:
 - Local Target: `revkb checkpoint` (no Target ID, even if local metadata names one).
 - Explicit centralized Target: `revkb checkpoint <target-id>`.
 
-Checkpoint only a Target that was opened or initialized. If no Target exists and
-tracking was not requested, skip checkpoint and state that no durable Vault changed.
+Checkpoint only an opened or initialized Target. Without one, skip it unless
+tracking was requested, and report that no Vault changed.
 Resolve hard validation errors before claiming the handoff is ready.
 
-Use `$archify` only when the user explicitly asks for a standalone architecture or
-workflow visualization. It supplements, never replaces, PANORAMA and checkpoint.
+`$archify` is only for explicitly requested standalone visualizations; it never
+replaces PANORAMA or checkpoint.

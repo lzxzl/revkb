@@ -2,6 +2,7 @@ import {
   firstHeading,
   hasFencedCodeBlock,
   hasSection,
+  markdownLinkKeys,
   markdownStructuralText,
   section,
   visibleSection,
@@ -201,7 +202,10 @@ export function validateTarget(target: TargetVault): ValidationReport {
     }
     if (
       kind === "finding" &&
-      !wikilinkKeys(section(note.body, "Related")).some((key) => {
+      ![
+        ...wikilinkKeys(section(note.body, "Related")),
+        ...markdownLinkKeys(section(note.body, "Related"), note.relativePath),
+      ].some((key) => {
         const related = notesByKey.get(key);
         return related && ["knowledge", "investigation"].includes(frontmatterString(related, "kind"));
       })
@@ -274,6 +278,11 @@ export function validateTarget(target: TargetVault): ValidationReport {
     }
     for (const link of note.wikilinks) {
       if (!notesByKey.has(link)) errors.push(issue("error", "broken-wikilink", note, `[[${link}]] does not exist`));
+    }
+    for (const link of note.markdownLinks) {
+      if (!notesByKey.has(link)) {
+        errors.push(issue("error", "broken-markdown-link", note, `${link}.md does not exist`));
+      }
     }
     if (kind === "knowledge" && status === "reviewed" && !visibleSection(note.body, "Evidence")) {
       warnings.push(issue("warning", "reviewed-without-evidence", note, "Reviewed Knowledge should include Evidence"));

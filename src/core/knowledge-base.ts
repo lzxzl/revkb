@@ -1,6 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { loadTargetAt, visibleSection, type Note, type TargetVault } from "./markdown.js";
+import {
+  loadTargetAt,
+  markdownLink,
+  rebaseMarkdownLinks,
+  visibleSection,
+  type Note,
+  type TargetVault,
+} from "./markdown.js";
 import {
   architectureAreas,
   frontmatterString,
@@ -18,8 +25,18 @@ export interface CheckpointResult {
   nextActions: string[];
 }
 
-function firstLine(content: string): string {
-  return content.split("\n").map((line) => line.trim()).find(Boolean) ?? "Not recorded.";
+function firstParagraph(content: string): string {
+  const lines = content.split("\n");
+  const paragraph: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (paragraph.length) break;
+      continue;
+    }
+    paragraph.push(trimmed);
+  }
+  return paragraph.join(" ") || "Not recorded.";
 }
 
 function bullets(lines: string[]): string {
@@ -56,7 +73,7 @@ function renderNextActionLines(investigations: Note[]): string[] {
     .map((note) => {
       const action = visibleSection(note.body, "Next action");
       return action
-        ? `${note.title} — ${frontmatterString(note, "status")} — ${firstLine(action)} — [[${note.key}]]`
+        ? `${note.title} — ${frontmatterString(note, "status")} — ${firstParagraph(action)} — [[${note.key}]]`
         : "";
     })
     .filter(Boolean);
@@ -68,12 +85,14 @@ function generatePanoramaRegions(target: TargetVault): Record<(typeof generatedR
   const coverageRows = architectureAreas(target.panorama).map((key) => {
     const note = notesByKey.get(key);
     if (!note || frontmatterString(note, "kind") !== "knowledge") {
-      return `| ${key} | missing | - | 0 | [[${key}]] |`;
+      return `| ${key} | missing | - | 0 | \`${key}.md\` |`;
     }
     const branchCount = investigations.filter(
-      (candidate) => frontmatterString(candidate, "status") !== "dismissed" && candidate.wikilinks.includes(key),
+      (candidate) =>
+        frontmatterString(candidate, "status") !== "dismissed" &&
+        (candidate.wikilinks.includes(key) || candidate.markdownLinks.includes(key)),
     ).length;
-    return `| ${note.title} | ${frontmatterString(note, "status")} | ${frontmatterString(note, "snapshot")} | ${branchCount} | [[${key}]] |`;
+    return `| ${note.title} | ${frontmatterString(note, "status")} | ${frontmatterString(note, "snapshot")} | ${branchCount} | ${markdownLink(note.title, `${key}.md`)} |`;
   });
 
   const coverage = [
@@ -83,13 +102,21 @@ function generatePanoramaRegions(target: TargetVault): Record<(typeof generatedR
   ].join("\n");
   const investigationLines = investigations
     .filter(isActiveInvestigation)
-    .map((note) => `[[${note.key}|${note.title}]] — ${frontmatterString(note, "status")} — Next: ${firstLine(visibleSection(note.body, "Next action"))}`);
+    .map((note) => {
+      const action = firstParagraph(visibleSection(note.body, "Next action"));
+      const rebasedAction = rebaseMarkdownLinks(
+        action,
+        note.relativePath,
+        target.panorama.relativePath,
+      );
+      return `${markdownLink(note.title, `${note.key}.md`)} — ${frontmatterString(note, "status")} — Next: ${rebasedAction}`;
+    });
   const leadLines = investigations
     .filter(isLead)
-    .map((note) => `[[${note.key}|${note.title}]] — ${frontmatterString(note, "status")}`);
+    .map((note) => `${markdownLink(note.title, `${note.key}.md`)} — ${frontmatterString(note, "status")}`);
   const findingLines = target.notes
     .filter(isConfirmedFinding)
-    .map((note) => `[[${note.key}|${note.title}]]`);
+    .map((note) => markdownLink(note.title, `${note.key}.md`));
   return {
     coverage,
     investigations: bullets(investigationLines),

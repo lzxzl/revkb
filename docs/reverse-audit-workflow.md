@@ -16,6 +16,11 @@ Create knowledge beside a reverse-engineering workspace with
 8. Run `revkb checkpoint` locally, or `revkb checkpoint <target-id>` centrally, and
    resolve hard errors before handing off.
 
+Use relative standard Markdown links with explicit `.md` extensions between Target
+pages, for example `[Trace](../evidence/runtime-trace.md)`. Legacy Wikilinks remain
+readable, while the Mermaid coverage marker deliberately keeps its exact
+`%% revkb-area: [[knowledge/...]]` syntax.
+
 ## Exploration discipline
 
 - Temporary reasoning and verbose tool output stay in the working session.

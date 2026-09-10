@@ -132,6 +132,16 @@ Local and centralized Targets use the same Markdown structure:
 
 Snapshot Artifact rows require exactly three nonempty fields. SHA-256 values are 64 hexadecimal characters.
 
+### Links between pages
+
+Use relative standard Markdown links with an explicit `.md` extension for durable,
+human-visible references. From a nested page, for example, write
+`[Runtime trace](../evidence/runtime-trace.md)`. `revkb` also reads and validates
+legacy `[[evidence/runtime-trace]]` Wikilinks, but newly generated regions and
+templates use standard Markdown for portability. The Mermaid coverage marker is a
+separate machine-readable contract and retains the exact
+`%% revkb-area: [[knowledge/...]]` form.
+
 ## Agent context
 
 ```bash
@@ -169,6 +179,11 @@ confirmed for the real Target. For normal setup, prefer `revkb init`.
 
 ## Obsidian and MCP tools
 
-Obsidian is an optional human view over the same Markdown. IDA, Ghidra, debugger, and MCP tools remain independent evidence sources orchestrated by Codex, Claude Code, or another Agent. `revkb` does not depend on or directly call them.
+Obsidian is an optional human view over the same Markdown. It supports both standard
+Markdown links and Wikilinks; standard Markdown is the recommended revkb write
+format so links also work in GitHub, editors, and other Markdown viewers. See
+[Obsidian's link documentation](https://obsidian.md/help/links). IDA, Ghidra,
+debugger, and MCP tools remain independent evidence sources orchestrated by Codex,
+Claude Code, or another Agent. `revkb` does not depend on or directly call them.
 
 `reviewed` records coverage of a declared scope. It never means the area is safe or free of vulnerabilities.

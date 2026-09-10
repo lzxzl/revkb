@@ -24,7 +24,7 @@ No alternate entry has been tested yet.
 
 ## Newly discovered branches
 
-- Alternate entry discovered while following [[knowledge/example-area]].
+- Alternate entry discovered while following [Example architecture area](../knowledge/example-area.md).
 
 ## Next action
 
@@ -32,4 +32,4 @@ Trace the alternate entry to the first privileged operation.
 
 ## Evidence
 
-[[evidence/example-evidence]]
+[Example evidence](../evidence/example-evidence.md)

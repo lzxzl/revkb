@@ -44,4 +44,4 @@ flowchart LR
 
 ## Snapshots
 
-- [[snapshots/example-v1]] — active
+- [example-v1](snapshots/example-v1.md) — active

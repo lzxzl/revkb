@@ -24,4 +24,4 @@ The privileged dispatch path still needs analysis.
 
 ## Evidence
 
-[[evidence/example-evidence]]
+[Example evidence](../evidence/example-evidence.md)

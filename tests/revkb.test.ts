@@ -650,8 +650,12 @@ Inspect the queued branch later.
     expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(0);
     expect(io.stdout()).toContain("WARNING architecture-area-without-coverage PANORAMA.md:");
     expect(await fs.readFile(panoramaPath, "utf8")).toContain(
-      "| evidence/runtime-trace | missing | - | 0 | [[evidence/runtime-trace]] |",
+      "| evidence/runtime-trace | missing | - | 0 | `evidence/runtime-trace.md` |",
     );
+
+    const secondIo = captureIo();
+    expect(await runCli(["checkpoint", "demo-target"], root, secondIo.io)).toBe(0);
+    expect(secondIo.stdout()).toContain("No generated Panorama changes.");
   });
 
   it("ships a valid idempotent Target template", async () => {
@@ -691,7 +695,7 @@ The reviewed path reaches [[knowledge/external-entry]].
 
     expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(0);
     expect(await fs.readFile(path.join(root, "targets/demo-target/PANORAMA.md"), "utf8")).toContain(
-      "| External entry | reviewed | demo-v1 | 2 | [[knowledge/external-entry]] |",
+      "| External entry | reviewed | demo-v1 | 2 | [External entry](knowledge/external-entry.md) |",
     );
   });
 
@@ -703,6 +707,224 @@ The reviewed path reaches [[knowledge/external-entry]].
 
     expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
     expect(io.stderr()).toContain("knowledge/external-entry.md");
+  });
+
+  it("writes portable Markdown links in generated Panorama regions", async () => {
+    const root = await createVault();
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io), io.stderr()).toBe(0);
+    const panorama = await fs.readFile(path.join(root, "targets/demo-target/PANORAMA.md"), "utf8");
+
+    expect(panorama).toContain(
+      "| External entry | reviewed | demo-v1 | 1 | [External entry](knowledge/external-entry.md) |",
+    );
+    expect(panorama).toContain(
+      "[Authentication bypass](investigations/auth-bypass.md) — analyzing — Next: " +
+        "Trace the unauthenticated caller into the native dispatcher.",
+    );
+    expect(panorama).toContain("[Command injection](findings/command-injection.md)");
+    expect(panorama).not.toContain("[[investigations/auth-bypass|Authentication bypass]]");
+  });
+
+  it("collapses soft line breaks in generated next actions", async () => {
+    const root = await createVault();
+    const investigationPath = path.join(
+      root,
+      "targets/demo-target/investigations/auth-bypass.md",
+    );
+    const investigation = await fs.readFile(investigationPath, "utf8");
+    await fs.writeFile(
+      investigationPath,
+      investigation.replace(
+        "Trace the unauthenticated caller into the native dispatcher.",
+        "Trace the unauthenticated caller\ninto the native dispatcher.",
+      ),
+    );
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io), io.stderr()).toBe(0);
+    const panorama = await fs.readFile(path.join(root, "targets/demo-target/PANORAMA.md"), "utf8");
+
+    expect(panorama).toContain(
+      "Next: Trace the unauthenticated caller into the native dispatcher.",
+    );
+  });
+
+  it("rebases Markdown links copied from a next action into Panorama", async () => {
+    const root = await createVault();
+    const investigationPath = path.join(
+      root,
+      "targets/demo-target/investigations/auth-bypass.md",
+    );
+    const investigation = await fs.readFile(investigationPath, "utf8");
+    await fs.writeFile(
+      investigationPath,
+      investigation.replace(
+        "Trace the unauthenticated caller into the native dispatcher.",
+        "Review [the runtime trace](../evidence/runtime-trace.md) before dispatch.",
+      ),
+    );
+    const firstIo = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, firstIo.io), firstIo.stderr()).toBe(0);
+    const panorama = await fs.readFile(
+      path.join(root, "targets/demo-target/PANORAMA.md"),
+      "utf8",
+    );
+    expect(panorama).toContain(
+      "Next: Review [the runtime trace](evidence/runtime-trace.md) before dispatch.",
+    );
+
+    const secondIo = captureIo();
+    expect(await runCli(["checkpoint", "demo-target"], root, secondIo.io), secondIo.stderr()).toBe(0);
+    expect(secondIo.stdout()).toContain("No generated Panorama changes.");
+  });
+
+  it("rebases a next-action fragment to the source Investigation", async () => {
+    const root = await createVault();
+    const investigationPath = path.join(
+      root,
+      "targets/demo-target/investigations/auth-bypass.md",
+    );
+    const investigation = await fs.readFile(investigationPath, "utf8");
+    await fs.writeFile(
+      investigationPath,
+      investigation.replace(
+        "Trace the unauthenticated caller into the native dispatcher.",
+        "Recheck [the Evidence section](#evidence) before dispatch.",
+      ),
+    );
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io), io.stderr()).toBe(0);
+    expect(await fs.readFile(path.join(root, "targets/demo-target/PANORAMA.md"), "utf8")).toContain(
+      "[the Evidence section](investigations/auth-bypass.md#evidence)",
+    );
+  });
+
+  it("accepts and rebases Markdown destinations with balanced or escaped parentheses", async () => {
+    const root = await createVault();
+    const target = path.join(root, "targets/demo-target");
+    await fs.writeFile(
+      path.join(target, "evidence/run(v2).md"),
+      `---
+kind: evidence
+target: demo-target
+snapshot: demo-v1
+---
+# Runtime trace v2
+`,
+    );
+    await fs.writeFile(
+      path.join(target, "evidence/run(v3).md"),
+      `---
+kind: evidence
+target: demo-target
+snapshot: demo-v1
+---
+# Runtime trace v3
+`,
+    );
+    const investigationPath = path.join(target, "investigations/auth-bypass.md");
+    const investigation = await fs.readFile(investigationPath, "utf8");
+    await fs.writeFile(
+      investigationPath,
+      investigation.replace(
+        "Trace the unauthenticated caller into the native dispatcher.",
+        "Compare [runtime trace v2](../evidence/run(v2).md) with " +
+          "[runtime trace v3](../evidence/run\\(v3\\).md) before dispatch.",
+      ),
+    );
+    const firstIo = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, firstIo.io), firstIo.stderr()).toBe(0);
+    expect(await fs.readFile(path.join(target, "PANORAMA.md"), "utf8")).toContain(
+      "[runtime trace v2](evidence/run%28v2%29.md) with " +
+        "[runtime trace v3](evidence/run%28v3%29.md)",
+    );
+
+    const secondIo = captureIo();
+    expect(await runCli(["checkpoint", "demo-target"], root, secondIo.io), secondIo.stderr()).toBe(0);
+    expect(secondIo.stdout()).toContain("No generated Panorama changes.");
+  });
+
+  it("ignores a Markdown link example inside inline code", async () => {
+    const root = await createVault();
+    const knowledgePath = path.join(
+      root,
+      "targets/demo-target/knowledge/external-entry.md",
+    );
+    await fs.appendFile(
+      knowledgePath,
+      "\nLiteral syntax: `[Missing](../evidence/not-a-link.md)`.\n",
+    );
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io), io.stderr()).toBe(0);
+  });
+
+  it("accepts relative Markdown links as cross-note relationships", async () => {
+    const root = await createVault();
+    const target = path.join(root, "targets/demo-target");
+    const replacements = [
+      {
+        relativePath: "knowledge/external-entry.md",
+        links: [
+          ["[[evidence/runtime-trace]]", "[Runtime trace](../evidence/runtime-trace.md)"],
+        ],
+      },
+      {
+        relativePath: "investigations/auth-bypass.md",
+        links: [
+          [
+            "[[knowledge/external-entry]]",
+            "[External entry](../knowledge/external-entry.md#current-conclusion)",
+          ],
+        ],
+      },
+      {
+        relativePath: "findings/command-injection.md",
+        links: [
+          ["[[knowledge/external-entry]]", "[External entry](../knowledge/external-entry.md)"],
+          ["[[investigations/auth-bypass]]", "[Authentication bypass](../investigations/auth-bypass.md)"],
+          ["[[evidence/runtime-trace]]", "[Runtime trace](../evidence/runtime-trace.md)"],
+        ],
+      },
+    ] as const;
+    for (const replacement of replacements) {
+      const notePath = path.join(target, replacement.relativePath);
+      let note = await fs.readFile(notePath, "utf8");
+      for (const [legacy, portable] of replacement.links) note = note.replace(legacy, portable);
+      await fs.writeFile(notePath, note);
+    }
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io), io.stderr()).toBe(0);
+    expect(await fs.readFile(path.join(target, "PANORAMA.md"), "utf8")).toContain(
+      "| External entry | reviewed | demo-v1 | 1 | [External entry](knowledge/external-entry.md) |",
+    );
+  });
+
+  it("rejects a broken relative Markdown link", async () => {
+    const root = await createVault();
+    const knowledgePath = path.join(
+      root,
+      "targets/demo-target/knowledge/external-entry.md",
+    );
+    const knowledge = await fs.readFile(knowledgePath, "utf8");
+    await fs.writeFile(
+      knowledgePath,
+      knowledge.replace(
+        "[[evidence/runtime-trace]]",
+        "[Missing evidence](../evidence/absent.md)",
+      ),
+    );
+    const io = captureIo();
+
+    expect(await runCli(["checkpoint", "demo-target"], root, io.io)).toBe(1);
+    expect(io.stderr()).toContain("broken-markdown-link knowledge/external-entry.md");
+    expect(io.stderr()).toContain("evidence/absent.md does not exist");
   });
 
   it("renders compact context and refreshes only generated Panorama regions", async () => {
@@ -718,9 +940,11 @@ The reviewed path reaches [[knowledge/external-entry]].
     expect(await runCli(["checkpoint", "demo-target"], root, checkpointIo.io)).toBe(0);
     const panorama = await fs.readFile(path.join(root, "targets/demo-target/PANORAMA.md"), "utf8");
     expect(panorama).toContain("Manual text must survive checkpoint.");
-    expect(panorama).toContain("| External entry | reviewed | demo-v1 | 1 | [[knowledge/external-entry]] |");
-    expect(panorama).toContain("[[investigations/auth-bypass|Authentication bypass]]");
-    expect(panorama).toContain("[[findings/command-injection|Command injection]]");
+    expect(panorama).toContain(
+      "| External entry | reviewed | demo-v1 | 1 | [External entry](knowledge/external-entry.md) |",
+    );
+    expect(panorama).toContain("[Authentication bypass](investigations/auth-bypass.md)");
+    expect(panorama).toContain("[Command injection](findings/command-injection.md)");
 
     const secondIo = captureIo();
     expect(await runCli(["checkpoint", "demo-target"], root, secondIo.io)).toBe(0);

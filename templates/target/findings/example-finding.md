@@ -16,9 +16,9 @@ The alternate external entry is reachable.
 
 ## Related
 
-- [[knowledge/example-area]]
-- [[investigations/example-investigation]]
+- [Example architecture area](../knowledge/example-area.md)
+- [Example authorization bypass investigation](../investigations/example-investigation.md)
 
 ## Evidence
 
-[[evidence/example-evidence]]
+[Example evidence](../evidence/example-evidence.md)

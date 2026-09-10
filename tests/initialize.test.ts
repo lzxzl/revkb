@@ -51,6 +51,9 @@ describe("initializeTarget", () => {
     expect(await fs.readdir(path.join(workspace, ".revkb/findings"))).toEqual([]);
     expect(await fs.readdir(path.join(workspace, ".revkb/evidence"))).toEqual([]);
     expect(await fs.readdir(path.join(workspace, ".revkb/knowledge"))).toEqual([]);
+    expect(await fs.readFile(path.join(workspace, ".revkb/PANORAMA.md"), "utf8")).toContain(
+      "[yuanbao-5040](snapshots/yuanbao-5040.md)",
+    );
 
     const context = await buildContextAt(location);
     expect(context).toContain("Initial target analysis — queued");
