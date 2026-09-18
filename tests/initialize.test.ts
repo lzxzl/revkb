@@ -256,7 +256,7 @@ describe("initializeTarget", () => {
         snapshotId: "demo-initial",
         artifactPaths: ["app.apk"],
       }),
-    ).rejects.toThrow(`Target path already exists: ${path.join(workspace, ".revkb")}`);
+    ).rejects.toThrow(`Target path already exists: ${path.join(workspace, ".revkb").replaceAll("\\", "/")}`);
 
     expect(await fs.readFile(panorama, "utf8")).toBe("keep");
   });

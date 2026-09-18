@@ -190,13 +190,16 @@ describe("revkb CLI initialization", () => {
       ),
     ).toBe(1);
     expect(secondIo.stderr()).toContain(
-      `Already inside local Target at ${path.join(workspace, ".revkb")}`,
+      `Already inside local Target at ${path.join(workspace, ".revkb").replaceAll("\\", "/")}`,
     );
     await expect(fs.stat(path.join(nested, ".revkb"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("initializes and operates local mode through the compiled binary", async () => {
-    await execFileAsync("npm", ["run", "build"], { cwd: path.resolve(".") });
+    await execFileAsync("npm", ["run", "build"], {
+      cwd: path.resolve("."),
+      shell: process.platform === "win32",
+    });
     const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "revkb-bin-local-"));
     const targetId = path.basename(workspace);
     await fs.writeFile(path.join(workspace, "sample.apk"), "abc");

@@ -42,7 +42,7 @@ describe("createDirectoryAtomically", () => {
       createDirectoryAtomically(target, async () => {
         populated = true;
       }),
-    ).rejects.toThrow(`Target path already exists: ${target}`);
+    ).rejects.toThrow(`Target path already exists: ${target.replaceAll("\\", "/")}`);
 
     expect(populated).toBe(false);
     expect(await fs.readFile(path.join(target, "keep.md"), "utf8")).toBe("keep");

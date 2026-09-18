@@ -2,6 +2,7 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { displayPath } from "./core/display-path.js";
 import { initializeTarget } from "./core/initialize.js";
 import { buildContextAt, checkpointAt } from "./core/knowledge-base.js";
 import {
@@ -140,7 +141,7 @@ export async function runCli(args: string[], cwd: string, io: CliIo): Promise<nu
     if (command.kind === "init") {
       const existing =
         command.positionalTargetId === undefined ? await findLocalTarget(cwd) : undefined;
-      if (existing) throw new Error(`Already inside local Target at ${existing.targetRoot}`);
+      if (existing) throw new Error(`Already inside local Target at ${displayPath(existing.targetRoot)}`);
 
       const targetId =
         command.positionalTargetId ?? command.targetOption ?? path.basename(path.resolve(cwd));
@@ -156,7 +157,7 @@ export async function runCli(args: string[], cwd: string, io: CliIo): Promise<nu
         artifactPaths: command.artifactPaths,
       });
       io.out(
-        `Initialized ${path.relative(cwd, location.targetRoot)} for ${targetId} at Snapshot ${snapshotId} with ${result.artifacts.length} Artifact(s).\n`,
+        `Initialized ${displayPath(path.relative(cwd, location.targetRoot))} for ${targetId} at Snapshot ${snapshotId} with ${result.artifacts.length} Artifact(s).\n`,
       );
       return 0;
     }
@@ -171,7 +172,7 @@ export async function runCli(args: string[], cwd: string, io: CliIo): Promise<nu
     const result = await checkpointAt(location);
     io.out(
       result.changed
-        ? `Updated ${path.relative(cwd, result.panoramaPath)}\n`
+        ? `Updated ${displayPath(path.relative(cwd, result.panoramaPath))}\n`
         : "No generated Panorama changes.\n",
     );
     for (const warning of result.warnings) io.out(`${formatIssue(warning)}\n`);

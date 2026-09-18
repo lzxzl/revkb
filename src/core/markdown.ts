@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
+import { displayPath } from "./display-path.js";
 import { centralTargetLocation, type TargetLocation } from "./target-location.js";
 
 export interface Note {
@@ -585,6 +586,12 @@ function frontmatterSource(raw: string): string {
   return /^(?:\uFEFF)?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(raw)?.[1] ?? "";
 }
 
+// Vault Markdown is parsed, compared, and rewritten with LF endings; pages
+// saved with CRLF by Windows editors are normalized once at load.
+function normalizeNewlines(content: string): string {
+  return content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
 export function parseNote(absolutePath: string, relativePath: string, raw: string): Note {
   const parsed = (() => {
     try {
@@ -627,13 +634,19 @@ export async function loadTargetAt(location: TargetLocation): Promise<TargetVaul
   const files = await markdownFiles(location.targetRoot);
   const notes = await Promise.all(
     files.map(async (absolutePath) => {
-      const relativePath = path.relative(location.targetRoot, absolutePath);
-      return parseNote(absolutePath, relativePath, await fs.readFile(absolutePath, "utf8"));
+      const relativePath = path
+        .relative(location.targetRoot, absolutePath)
+        .replaceAll("\\", "/");
+      return parseNote(
+        absolutePath,
+        relativePath,
+        normalizeNewlines(await fs.readFile(absolutePath, "utf8")),
+      );
     }),
   );
   notes.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   const panorama = notes.find((note) => note.relativePath === "PANORAMA.md");
-  if (!panorama) throw new Error(`Missing ${path.join(location.targetRoot, "PANORAMA.md")}`);
+  if (!panorama) throw new Error(`Missing ${displayPath(path.join(location.targetRoot, "PANORAMA.md"))}`);
   return { ...location, panorama, notes };
 }
 

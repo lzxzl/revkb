@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { createDirectoryAtomically } from "./atomic-directory.js";
+import { displayPath } from "./display-path.js";
 import { loadTargetAt, markdownLink } from "./markdown.js";
 import type { TargetLocation } from "./target-location.js";
 import { requireValid } from "./validation.js";
@@ -49,7 +50,7 @@ export function portableRelativeArtifactPath(
   const relativePath = pathOperations.relative(invocationRoot, absolutePath);
   if (!relativePath || pathOperations.isAbsolute(relativePath)) {
     throw new Error(
-      `Artifact cannot be recorded relative to the invocation directory: ${absolutePath}`,
+      `Artifact cannot be recorded relative to the invocation directory: ${displayPath(absolutePath)}`,
     );
   }
   return relativePath.split(pathOperations.sep).join("/");

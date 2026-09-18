@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
+import { displayPath } from "./display-path.js";
 
 export interface TargetLocation {
   vaultRoot: string;
@@ -47,12 +48,12 @@ async function targetIdFromPanorama(panoramaPath: string): Promise<string> {
       return matter(raw);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`${panoramaPath}: ${message}`, { cause: error });
+      throw new Error(`${displayPath(panoramaPath)}: ${message}`, { cause: error });
     }
   })();
   const targetId = parsed.data.target;
   if (typeof targetId !== "string" || !targetId.trim()) {
-    throw new Error(`${panoramaPath}: frontmatter target must be a nonempty string`);
+    throw new Error(`${displayPath(panoramaPath)}: frontmatter target must be a nonempty string`);
   }
   return targetId;
 }

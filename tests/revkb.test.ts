@@ -192,14 +192,30 @@ describe("revkb", () => {
 
   it("runs context through an npm-style bin symlink", async () => {
     const root = await createVault();
-    await execFileAsync("npm", ["run", "build"], { cwd: path.resolve(".") });
-    const binDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "revkb-bin-"));
-    const binPath = path.join(binDirectory, "revkb");
-    await fs.symlink(path.resolve("dist/cli.js"), binPath);
-
-    const result = await execFileAsync(process.execPath, [binPath, "context", "demo-target"], {
-      cwd: root,
+    await execFileAsync("npm", ["run", "build"], {
+      cwd: path.resolve("."),
+      shell: process.platform === "win32",
     });
+    const binDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "revkb-bin-"));
+    const cli = path.resolve("dist/cli.js");
+
+    let result: Awaited<ReturnType<typeof execFileAsync>>;
+    if (process.platform === "win32") {
+      // Windows npm installs a cmd shim rather than a symlink, and creating
+      // file symlinks needs a privilege this process does not have.
+      const shim = path.join(binDirectory, "revkb.cmd");
+      await fs.writeFile(shim, `@node "${cli}" %*\r\n`);
+      result = await execFileAsync(shim, ["context", "demo-target"], {
+        cwd: root,
+        shell: true,
+      });
+    } else {
+      const binPath = path.join(binDirectory, "revkb");
+      await fs.symlink(cli, binPath, "file");
+      result = await execFileAsync(process.execPath, [binPath, "context", "demo-target"], {
+        cwd: root,
+      });
+    }
 
     expect(result.stderr).toBe("");
     expect(result.stdout).toContain("# Reverse Audit Context: Demo Target");

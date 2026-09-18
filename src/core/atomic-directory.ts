@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { displayPath } from "./display-path.js";
 
 async function exists(candidate: string): Promise<boolean> {
   try {
@@ -16,7 +17,7 @@ export async function createDirectoryAtomically(
   populate: (stagingPath: string) => Promise<void>,
 ): Promise<void> {
   const resolvedFinal = path.resolve(finalPath);
-  if (await exists(resolvedFinal)) throw new Error(`Target path already exists: ${resolvedFinal}`);
+  if (await exists(resolvedFinal)) throw new Error(`Target path already exists: ${displayPath(resolvedFinal)}`);
 
   const parent = path.dirname(resolvedFinal);
   await fs.mkdir(parent, { recursive: true });
@@ -24,7 +25,7 @@ export async function createDirectoryAtomically(
   let published = false;
   try {
     await populate(staging);
-    if (await exists(resolvedFinal)) throw new Error(`Target path already exists: ${resolvedFinal}`);
+    if (await exists(resolvedFinal)) throw new Error(`Target path already exists: ${displayPath(resolvedFinal)}`);
     await fs.rename(staging, resolvedFinal);
     published = true;
   } finally {
